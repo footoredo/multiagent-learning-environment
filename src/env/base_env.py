@@ -1,4 +1,3 @@
-import common.tf_util as U
 from abc import ABC, abstractmethod
 
 
@@ -19,10 +18,35 @@ class BaseEnv(ABC):
 
     @abstractmethod
     def reset(self):
+        """
+        Reset all the environments and return an array of
+        observations, or a dict of observation arrays.
+        """
         pass
 
     @abstractmethod
     def step(self, actions):
+        """
+        Returns (obs, rews, infos, done):
+         - obs: an array of observations, or a dict of
+                arrays of observations.
+         - rews: an array of rewards
+         - infos: a sequence of info objects
+         - done: whether this episode is over
+        """
         pass
 
 
+class BaseEnvWrapper(BaseEnv):
+    def __init__(self, base_env: BaseEnv, num_agents=None, observation_spaces=None, action_spaces=None):
+        self.base_env = base_env
+        super().__init__(num_agents=num_agents or base_env.num_agents,
+                         observation_spaces=observation_spaces or base_env.observation_spaces,
+                         action_spaces=action_spaces or base_env.action_spaces)
+
+    @abstractmethod
+    def reset(self):
+        pass
+
+    def step(self, actions):
+        return self.base_env.step(actions)
