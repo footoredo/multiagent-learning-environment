@@ -1,43 +1,52 @@
 import time
 from collections import deque
 
-from common import zipsame, fmt_row
-from env.base_env import BaseEnv
+from monitor.statistics import Statistics
+from common import zipsame
 from agent.base_agent import BaseAgent
 from agent.policy import Policy
 import common.tf_util as U
+from common import Dataset
 import tensorflow as tf, numpy as np
 from common.mpi_adam import MpiAdam
+from common.mpi_moments import mpi_moments
 from mpi4py import MPI
-import logger
 
 
 class PPOAgent(BaseAgent):
     def __init__(self, name, *args, **kwargs):
+        self.name = name
         with tf.variable_scope(name):
+            # print(name)
             self._init(*args, **kwargs)
             self.scope = tf.get_variable_scope().name
+            # print(self.scope)
 
     def _init(self, policy_fn, ob_space, ac_space,
               handlers,
               timesteps_per_actorbatch,
               clip_param, entcoeff,  # clipping parameter epsilon, entropy coeff
+              optim_epochs, optim_stepsize,  # optimization hypers
               gamma, lam,  # advantage estimation
               max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
               callback=None,  # you can do anything in the callback, since it takes locals(), globals()
               adam_epsilon=1e-5,
               schedule='constant'  # annealing for stepsize parameters (epsilon and adam)
               ):
+        # print(ob_space)
+        self.policy_fn = policy_fn
+        self.ob_space = ob_space
+        self.ac_space = ac_space
         self.push, self.pull = handlers
-        pi = policy_fn("pi", ob_space, ac_space)  # Construct network for new policy
-        oldpi = policy_fn("oldpi", ob_space, ac_space)  # Network for old policy
+        pi = policy_fn("pi", self.name, ob_space, ac_space)  # Construct network for new policy
+        oldpi = policy_fn("oldpi", self.name, ob_space, ac_space)  # Network for old policy
         atarg = tf.placeholder(dtype=tf.float32, shape=[None])  # Target advantage function (if applicable)
         ret = tf.placeholder(dtype=tf.float32, shape=[None])  # Empirical return
 
         lrmult = tf.placeholder(name='lrmult', dtype=tf.float32,
                                 shape=[])  # learning rate multiplier, updated with schedule
 
-        ob = U.get_placeholder_cached(name="ob")
+        ob = U.get_placeholder_cached(name="ob_" + self.name)
         ac = pi.pdtype.sample_placeholder([None])
 
         kloldnew = oldpi.pd.kl(pi.pd)
@@ -72,7 +81,11 @@ class PPOAgent(BaseAgent):
         self.pi = pi
         self.pi_cnt = 0
 
-        def train_phase():
+        self.average_utility = 0.0
+        self.tot = 0
+
+        def train_phase(i, statistics: Statistics):
+            # print(self.scope + ("avg util: %.5f" % self.average_utility))
             env = self.pull("latest")
             seg_gen = self._traj_segment_generator(self.pi, env, timesteps_per_actorbatch, stochastic=True)
 
@@ -97,30 +110,68 @@ class PPOAgent(BaseAgent):
                 elif max_seconds and time.time() - tstart >= max_seconds:
                     break
 
-                if schedule == 'constant':
-                    cur_lrmult = 1.0
-                elif schedule == 'linear':
-                    cur_lrmult = max(1.0 - float(timesteps_so_far) / max_timesteps, 0)
-                else:
-                    raise NotImplementedError
-
-                logger.log("********** Iteration %i ************" % iters_so_far)
+                # logger.log("********** Iteration %i ************" % iters_so_far)
 
                 seg = seg_gen.__next__()
                 self._add_vtarg_and_adv(seg, gamma, lam)
 
                 # ob, ac, atarg, ret, td1ret = map(np.concatenate, (obs, acs, atargs, rets, td1rets))
+                # logger.log(seg["rew"])
                 ob, ac, atarg, tdlamret = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"]
+                # logger.log(atarg)
                 vpredbefore = seg["vpred"]  # predicted value function before udpate
-                atarg = (atarg - atarg.mean()) / atarg.std()  # standardized advantage function estimate
+                # if atarg.std() > 1e-4:
+                #     atarg = (atarg - atarg.mean()) / atarg.std()  # standardized advantage function estimate
+                # else:
+                #     print(atarg.mean())
+                #     atarg = (atarg - atarg.mean())
+                    # print(atarg)
                 d = Dataset(dict(ob=ob, ac=ac, atarg=atarg, vtarg=tdlamret), deterministic=pi.recurrent)
-                optim_batchsize = optim_batchsize or ob.shape[0]
+                optim_batchsize = ob.shape[0]
+
+                if schedule == 'constant':
+                    cur_lrmult = 1.0
+                elif schedule == 'linear':
+                    cur_lrmult = max(1.0 - float(timesteps_so_far) / max_timesteps, 0)
+                elif schedule == "wolf":
+                    if np.average(seg["rew"]) < self.average_utility:
+                        cur_lrmult = 20.0
+                    else:
+                        cur_lrmult = 1.0
+                elif schedule == "wolf2":
+                    if np.average(seg["rew"]) < self.average_utility - 0.01:
+                        cur_lrmult = 20.0
+                    else:
+                        cur_lrmult = 1.0
+                    # cur_lrmult *= max(1.0 - float(timesteps_so_far) / max_timesteps, 0)
+                elif schedule == "wolf_adv":
+                    if np.average(seg["delta"]) > 0.:
+                        cur_lrmult = 1.0
+                    else:
+                        cur_lrmult = 20.0
+                elif schedule == "wolf_stat":
+                    assert len(seg["rew"]) == 1
+                    if seg["rew"][0] > statistics.get_avg_rew(i, seg["ob"][0]):
+                        cur_lrmult = 1.0
+                    else:
+                        cur_lrmult = 20.0
+                else:
+                    raise NotImplementedError
+
+                self.average_utility = self.average_utility * self.tot + np.sum(seg["rew"])
+                self.tot += len(seg["rew"])
+                self.average_utility /= self.tot
+
+                # fasdaqwe = 0.9
+                # self.average_utility = fasdaqwe * self.average_utility + np.average(seg["rew"]) * (1 - fasdaqwe)
+
+                # print(self.scope + ("avg util: %.5f" % self.average_utility))
 
                 if hasattr(pi, "ob_rms"): pi.ob_rms.update(ob)  # update running mean/std for policy
 
                 assign_old_eq_new()  # set old parameter values to new parameter values
-                logger.log("Optimizing...")
-                logger.log(fmt_row(13, loss_names))
+                # logger.log("Optimizing...")
+                # logger.log(fmt_row(13, loss_names))
                 # Here we do a bunch of optimization epochs over the data
                 for _ in range(optim_epochs):
                     losses = []  # list of tuples, each of which gives the loss for a minibatch
@@ -128,38 +179,44 @@ class PPOAgent(BaseAgent):
                         *newlosses, g = lossandgrad(batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"],
                                                     cur_lrmult)
                         adam.update(g, optim_stepsize * cur_lrmult)
-                        losses.append(newlosses)
-                    logger.log(fmt_row(13, np.mean(losses, axis=0)))
+                    #     losses.append(newlosses)
+                    # logger.log(fmt_row(13, np.mean(losses, axis=0)))
 
-                logger.log("Evaluating losses...")
+                # logger.log("Evaluating losses...")
                 losses = []
                 for batch in d.iterate_once(optim_batchsize):
                     newlosses = compute_losses(batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
                     losses.append(newlosses)
                 meanlosses, _, _ = mpi_moments(losses, axis=0)
-                logger.log(fmt_row(13, meanlosses))
-                for (lossval, name) in zipsame(meanlosses, loss_names):
-                    logger.record_tabular("loss_" + name, lossval)
-                logger.record_tabular("ev_tdlam_before", explained_variance(vpredbefore, tdlamret))
+                # logger.log(fmt_row(13, meanlosses))
+                # for (lossval, name) in zipsame(meanlosses, loss_names):
+                #     logger.record_tabular("loss_" + name, lossval)
+                # logger.record_tabular("ev_tdlam_before", explained_variance(vpredbefore, tdlamret))
                 lrlocal = (seg["ep_lens"], seg["ep_rets"])  # local values
                 listoflrpairs = MPI.COMM_WORLD.allgather(lrlocal)  # list of tuples
                 lens, rews = map(flatten_lists, zip(*listoflrpairs))
                 lenbuffer.extend(lens)
                 rewbuffer.extend(rews)
-                logger.record_tabular("EpLenMean", np.mean(lenbuffer))
-                logger.record_tabular("EpRewMean", np.mean(rewbuffer))
-                logger.record_tabular("EpThisIter", len(lens))
+                # logger.record_tabular("EpLenMean", np.mean(lenbuffer))
+                # logger.record_tabular("EpRewMean", np.mean(rewbuffer))
+                # logger.record_tabular("EpThisIter", len(lens))
                 episodes_so_far += len(lens)
                 timesteps_so_far += sum(lens)
                 iters_so_far += 1
-                logger.record_tabular("EpisodesSoFar", episodes_so_far)
-                logger.record_tabular("TimestepsSoFar", timesteps_so_far)
-                logger.record_tabular("TimeElapsed", time.time() - tstart)
-                if MPI.COMM_WORLD.Get_rank() == 0:
-                    logger.dump_tabular()
+                # logger.record_tabular("EpisodesSoFar", episodes_so_far)
+                # logger.record_tabular("TimestepsSoFar", timesteps_so_far)
+                # logger.record_tabular("TimeElapsed", time.time() - tstart)
+                # if MPI.COMM_WORLD.Get_rank() == 0:
+                #     logger.dump_tabular()
 
+            # print(time.time() - tstart)
             self.push(self._get_policy())
+            del env
         self.train_phase = train_phase
+        self.curpi = self.policy_fn("curpi%d" % self.pi_cnt, self.name, self.ob_space, self.ac_space)  # Network for submitted policy
+        self.assign_cur_eq_new = U.function([], [], updates=[tf.assign(curv, newv)
+                                                            for (curv, newv) in
+                                                            zipsame(self.curpi.get_variables(), self.pi.get_variables())])
 
     @staticmethod
     def _traj_segment_generator(pi, env, horizon, stochastic):
@@ -224,26 +281,36 @@ class PPOAgent(BaseAgent):
                         0)  # last element is only used for last vtarg, but we already zeroed it if last new = 1
         vpred = np.append(seg["vpred"], seg["nextvpred"])
         T = len(seg["rew"])
+        # print(T)
         seg["adv"] = gaelam = np.empty(T, 'float32')
+        seg["delta"] = delta = np.empty(T, 'float32')
         rew = seg["rew"]
         lastgaelam = 0
         for t in reversed(range(T)):
             nonterminal = 1 - new[t + 1]
-            delta = rew[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
-            gaelam[t] = lastgaelam = delta + gamma * lam * nonterminal * lastgaelam
+            # print(nonterminal)
+            delta[t] = rew[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
+            # print(delta)
+            # delta = rew[t]
+            gaelam[t] = lastgaelam = delta[t] + gamma * lam * nonterminal * lastgaelam
+        # print(seg["adv"])
         seg["tdlamret"] = seg["adv"] + seg["vpred"]
 
     def _get_policy(self):
-        with tf.variable_scope(self.scope):
-            curpi = policy_fn("curpi%d" % self.pi_cnt, ob_space, ac_space)  # Network for submitted policy
-            self.pi_cnt += 1
-            assign_cur_eq_new = U.function([], [], updates=[tf.assign(curv, newv)
-                                                            for (curv, newv) in
-                                                            zipsame(curpi.get_variables(), self.pi.get_variables())])
-            assign_cur_eq_new()
+        self.assign_cur_eq_new()
+        # with tf.variable_scope(self.scope):
+            # curpi = self.policy_fn("curpi%d" % self.pi_cnt, self.ob_space, self.ac_space)  # Network for submitted policy
+            # self.pi_cnt += 1
+            # curpi = self.curpi
+            # assign_cur_eq_new = U.function([], [], updates=[tf.assign(curv, newv)
+            #                                                 for (curv, newv) in
+            #                                                 zipsame(curpi.get_variables(), self.pi.get_variables())])
+            # assign_cur_eq_new()
+            # delete ass
 
         def act_fn(ob):
-            ac, vpred = curpi.act(stochastic=True, ob=ob)
+            ac, vpred = self.curpi.act(stochastic=True, ob=ob)
+            # print(ac)
             return ac
 
         return Policy(act_fn)
@@ -254,8 +321,12 @@ class PPOAgent(BaseAgent):
     def get_final_policy(self):
         return self._get_policy()
 
-    def train(self):
-        self.train_phase()
+    def train(self, *args, **kwargs):
+        self.train_phase(*args, **kwargs)
 
     def get_config(self):
         return {}
+
+
+def flatten_lists(listoflists):
+    return [el for list_ in listoflists for el in list_]

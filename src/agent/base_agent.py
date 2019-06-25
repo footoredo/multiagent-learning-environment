@@ -28,7 +28,7 @@ class BaseAgent(ABC):
     #     pass
 
     @abstractmethod
-    def train(self):
+    def train(self, *args, **kwargs):
         pass
 
     @abstractmethod

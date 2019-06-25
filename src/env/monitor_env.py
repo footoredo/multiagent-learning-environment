@@ -2,15 +2,24 @@ from env.base_env import BaseEnvWrapper
 
 
 class MonitorEnv(BaseEnvWrapper):
-    def __init__(self, base_env, update_handler):
+    def __init__(self, base_env, update_handlers):
         super().__init__(base_env)
         # print(update_handler)
-        self.update_handler = update_handler
+        self.update_handlers = update_handlers
+        self.last_obs = None
 
-    def reset(self):
-        obs = self.base_env.reset()
+    def update(self, *args, **kwargs):
+        if type(self.update_handlers) == list:
+            for update_handler in self.update_handlers:
+                update_handler(*args, **kwargs)
+        elif self.update_handlers is not None:
+            self.update_handlers(*args, **kwargs)
+
+    def reset(self, debug=False):
+        obs = self.base_env.reset(debug)
         # print("ASd")
-        self.update_handler(
+        self.update(
+            last_obs=None,
             start=True,
             actions=None,
             rews=None,
@@ -18,11 +27,13 @@ class MonitorEnv(BaseEnvWrapper):
             done=False,
             obs=obs
         )
+        self.last_obs = obs
         return obs
 
     def step(self, actions):
         obs, rews, infos, done = self.base_env.step(actions)
-        self.update_handler(
+        self.update(
+            last_obs=self.last_obs,
             start=False,
             actions=actions,
             rews=rews,
@@ -30,4 +41,5 @@ class MonitorEnv(BaseEnvWrapper):
             done=done,
             obs=obs
         )
+        self.last_obs = obs
         return obs, rews, infos, done

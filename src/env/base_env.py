@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import numpy as np
 
 
 class BaseEnv(ABC):
@@ -16,8 +17,27 @@ class BaseEnv(ABC):
     def get_action_space(self, i):
         return self.action_spaces[i]
 
+    def get_ob_encoders(self):
+        def ob_encoder(ob):
+            return hash(tuple(ob.astype(int).tolist()))
+        return [ob_encoder] * self.num_agents
+
+    def get_ac_encoders(self):
+        def ac_encoder(ac):
+            return ac
+        return [ac_encoder] * self.num_agents
+
+    def get_n_acs(self):
+        # print(self.action_spaces[0].)
+        return [ac_space.n for ac_space in self.action_spaces]
+
+    def get_ob_namers(self):
+        def ob_namer(ob):
+            return str(ob)
+        return [ob_namer] * self.num_agents
+
     @abstractmethod
-    def reset(self):
+    def reset(self, debug=False):
         """
         Reset all the environments and return an array of
         observations, or a dict of observation arrays.
@@ -45,7 +65,7 @@ class BaseEnvWrapper(BaseEnv):
                          action_spaces=action_spaces or base_env.action_spaces)
 
     @abstractmethod
-    def reset(self):
+    def reset(self, debug=False):
         pass
 
     def step(self, actions):

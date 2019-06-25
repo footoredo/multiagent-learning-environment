@@ -3,8 +3,10 @@ from env.reduced_env import ReducedEnv
 from env.monitor_env import MonitorEnv
 from controller.base_controller import BaseController
 from agent.base_agent import BaseAgent
+from monitor.statistics import Statistics
 import random
 import time
+import numpy as np
 
 
 class NaiveController(BaseController):
@@ -13,6 +15,8 @@ class NaiveController(BaseController):
         self.agent_fns = agent_fns
         self.step = None
         self.policy_store_every = None
+        self.test_cnt = np.zeros(shape=(2, 2), dtype=np.int32)
+        self.statistics = None
 
     def get_push_handler(self, i):
         def push(policy):
@@ -36,26 +40,33 @@ class NaiveController(BaseController):
             #     version = -1
             # if type(version) == int:
             #     version -= i
+            if version == "average":
+                fixed_policies = [self.statistics.get_avg_policy(j) for j in range(self.num_agents) if j != i]
+            else:
+                fixed_policies = [self.get_policy_with_version(
+                    self.policies[j], version=version
+                ) for j in range(self.num_agents) if j != i]
+
             return ReducedEnv(self.env,
                               fixed_indices=[j for j in range(self.num_agents) if j != i],
-                              fixed_policies=[self.get_policy_with_version(
-                                  self.policies[j], version=version
-                              ) for j in range(self.num_agents) if j != i],
-                              single=True)
+                              fixed_policies=fixed_policies,
+                              allow_single=True)
         return pull
 
     def train(self, *args, **kwargs):
         self._train(*args, **kwargs)
 
     def _push_policy(self, i, policy):
-        if self.step > 0 and self.step % self.policy_store_every == 0:
+        if self.policy_store_every is not None and self.step > 0 and self.step % self.policy_store_every == 0:
             self.policies[i].append(policy)
         else:
             self.policies[i][-1] = policy
 
-    def _train(self, max_steps=10000, policy_store_every=100, update_handler=None):
+    def _train(self, max_steps=10000, policy_store_every=100, test_every=100,
+               show_every=None, test_max_steps=100):
         self.policy_store_every = policy_store_every
-        env = self.env if update_handler is None else MonitorEnv(self.env, update_handler)
+        # env = self.env if update_handler is None else MonitorEnv(self.env, update_handler)
+        env = self.env
         self.agents = [agent_fn(observation_space=env.get_observation_space(i),
                                 action_space=env.get_action_space(i),
                                 handlers=self.get_handlers(i))
@@ -66,16 +77,69 @@ class NaiveController(BaseController):
         self.policies = [[agent.get_initial_policy()] for agent in self.agents]
 
         last_time = time.time()
+
+        self.statistics = Statistics(self.env) if test_every is not None else None
+
         for self.step in range(max_steps):
-            if self.step % 1000 == 0 and self.step > 0:
+            if test_every is not None and self.step % test_every == 0 and self.step > 0:
                 now_time = time.time()
-                print("Step %d / %d" % (self.step, max_steps), now_time - last_time)
+                print("\n### Step %d / %d" % (self.step, max_steps), now_time - last_time)
                 last_time = now_time
-            for agent in self.agents:
-                agent.train()
+                self.run_test(test_max_steps)
+            if show_every is not None and self.step % show_every == 0 and self.step > 0:
+                self.show()
+            for i, agent in enumerate(self.agents):
+                for _ in range(10 if i == 1 else 1):
+                    agent.train(i, self.statistics)
+
+        if test_every is not None:
+            self.statistics.show_statistics()
+
+    @staticmethod
+    def show_statistics(cnt):
+        tot = cnt[0][0] + cnt[0][1]
+        print("Total iterations: %d" % tot)
+        print("Agent 0: {:.2%} {:.2%}".format(cnt[0][0] / tot, cnt[0][1] / tot))
+        print("Agent 1: {:.2%} {:.2%}".format(cnt[1][0] / tot, cnt[1][1] / tot))
+
+    def run_test(self, max_steps):
+        local_statistics = Statistics(self.env)
+
+        def double_update_handler(last_obs, start, actions, rews, infos, done, obs):
+            local_statistics.get_update_handler()(last_obs, start, actions, rews, infos, done, obs)
+            self.statistics.get_update_handler()(last_obs, start, actions, rews, infos, done, obs)
+
+        self._test(max_steps, update_handler=double_update_handler)
+        local_statistics.show_statistics()
+        self.statistics.show_statistics()
+
+    def run_test_old(self, max_steps):
+        test_cnt = np.zeros(shape=(2, 2), dtype=np.int32)
+
+        def test_update_handler(start, actions, rews, infos, done, obs):
+            if actions is not None:
+                test_cnt[0][actions[0]] += 1
+                test_cnt[1][actions[1]] += 1
+                self.test_cnt[0][actions[0]] += 1
+                self.test_cnt[1][actions[1]] += 1
+
+        self._test(max_steps, update_handler=test_update_handler)
+        self.show_statistics(test_cnt)
 
     def test(self, *args, **kwargs):
         self._test(*args, **kwargs)
+
+    def show(self):
+        show_env = self.env
+        policies = [agent.get_final_policy() for agent in self.agents]
+        show_env = ReducedEnv(show_env,
+                              fixed_indices=range(self.num_agents),
+                              fixed_policies=policies)
+        show_env.reset(debug=True)
+        while True:
+            _, _, _, done = show_env.step([])
+            if done:
+                break
 
     def _test(self, max_steps=10000, update_handler=None):
         test_env = self.env if update_handler is None else MonitorEnv(self.env, update_handler)
