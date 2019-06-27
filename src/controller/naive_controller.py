@@ -54,7 +54,7 @@ class NaiveController(BaseController):
         return pull
 
     def train(self, *args, **kwargs):
-        self._train(*args, **kwargs)
+        return self._train(*args, **kwargs)
 
     def _push_policy(self, i, policy):
         if self.policy_store_every is not None and self.step > 0 and self.step % self.policy_store_every == 0:
@@ -67,6 +67,7 @@ class NaiveController(BaseController):
         self.policy_store_every = policy_store_every
         # env = self.env if update_handler is None else MonitorEnv(self.env, update_handler)
         env = self.env
+        results = []
         self.agents = [agent_fn(observation_space=env.get_observation_space(i),
                                 action_space=env.get_action_space(i),
                                 handlers=self.get_handlers(i))
@@ -85,15 +86,17 @@ class NaiveController(BaseController):
                 now_time = time.time()
                 print("\n### Step %d / %d" % (self.step, max_steps), now_time - last_time)
                 last_time = now_time
-                self.run_test(test_max_steps)
+                results.append(self.run_test(test_max_steps))
             if show_every is not None and self.step % show_every == 0 and self.step > 0:
                 self.show()
             for i, agent in enumerate(self.agents):
-                for _ in range(10 if i == 1 else 1):
-                    agent.train(i, self.statistics)
+                for _ in range(1):
+                    agent.train(i, self.statistics, self.step / max_steps)
 
         if test_every is not None:
             self.statistics.show_statistics()
+
+        return results
 
     @staticmethod
     def show_statistics(cnt):
@@ -112,6 +115,8 @@ class NaiveController(BaseController):
         self._test(max_steps, update_handler=double_update_handler)
         local_statistics.show_statistics()
         self.statistics.show_statistics()
+        return local_statistics.export_statistics()
+        # return self.statistics.export_statistics()
 
     def run_test_old(self, max_steps):
         test_cnt = np.zeros(shape=(2, 2), dtype=np.int32)

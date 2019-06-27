@@ -84,9 +84,9 @@ class PPOAgent(BaseAgent):
         self.average_utility = 0.0
         self.tot = 0
 
-        def train_phase(i, statistics: Statistics):
+        def train_phase(i, statistics: Statistics, progress):
             # print(self.scope + ("avg util: %.5f" % self.average_utility))
-            env = self.pull("latest")
+            env = self.pull("average")
             seg_gen = self._traj_segment_generator(self.pi, env, timesteps_per_actorbatch, stochastic=True)
 
             episodes_so_far = 0
@@ -131,6 +131,8 @@ class PPOAgent(BaseAgent):
 
                 if schedule == 'constant':
                     cur_lrmult = 1.0
+                elif schedule == "dec":
+                    cur_lrmult = np.exp(-progress)
                 elif schedule == 'linear':
                     cur_lrmult = max(1.0 - float(timesteps_so_far) / max_timesteps, 0)
                 elif schedule == "wolf":
@@ -148,15 +150,23 @@ class PPOAgent(BaseAgent):
                     if np.average(seg["delta"]) > 0.:
                         cur_lrmult = 1.0
                     else:
-                        cur_lrmult = 20.0
+                        cur_lrmult = 4.0
                 elif schedule == "wolf_stat":
                     assert len(seg["rew"]) == 1
                     if seg["rew"][0] > statistics.get_avg_rew(i, seg["ob"][0]):
                         cur_lrmult = 1.0
                     else:
                         cur_lrmult = 20.0
+                elif schedule == "wolf_stat_matrix":
+                    if np.average(seg["rew"]) > statistics.get_avg_rew(i, seg["ob"][0]):
+                        cur_lrmult = 1.0
+                    else:
+                        cur_lrmult = 4.0
                 else:
                     raise NotImplementedError
+
+                cur_lrmult *= 1e-2 / np.sqrt(progress + 1e-2)
+                # print(1e-2 / np.sqrt(progress))
 
                 self.average_utility = self.average_utility * self.tot + np.sum(seg["rew"])
                 self.tot += len(seg["rew"])
@@ -289,9 +299,9 @@ class PPOAgent(BaseAgent):
         for t in reversed(range(T)):
             nonterminal = 1 - new[t + 1]
             # print(nonterminal)
-            delta[t] = rew[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
+            # delta[t] = rew[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
             # print(delta)
-            # delta = rew[t]
+            delta[t] = rew[t]
             gaelam[t] = lastgaelam = delta[t] + gamma * lam * nonterminal * lastgaelam
         # print(seg["adv"])
         seg["tdlamret"] = seg["adv"] + seg["vpred"]
@@ -309,7 +319,7 @@ class PPOAgent(BaseAgent):
             # delete ass
 
         def act_fn(ob):
-            ac, vpred = self.curpi.act(stochastic=True, ob=ob)
+            ac, vpred = self.curpi.act_with_explore(stochastic=True, ob=ob, explore_prob=1e-2)
             # print(ac)
             return ac
 

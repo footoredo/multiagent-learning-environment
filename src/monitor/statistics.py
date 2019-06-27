@@ -49,6 +49,7 @@ class Statistics(object):
             if eob not in self.stats[i]:
                 return random.choices(range(self.n_acs[i]))[0]
             else:
+                # print(i, self.stats[i][eob])
                 return random.choices(range(self.n_acs[i]), weights=self.stats[i][eob])[0]
         return Policy(act_fn)
 
@@ -68,3 +69,13 @@ class Statistics(object):
                 for j in range(self.n_acs[i]):
                     print("{0:.2%}".format(freq[j]), end=' ')
                 print()
+
+    def export_statistics(self):
+        result = []
+        for i in range(self.n_agents):
+            result_map = {}
+            for eob, ob in self.ob_maps[i].items():
+                result_map[eob] = self.to_freq(self.stats[i][eob])
+            result.append(result_map)
+        return result
+
