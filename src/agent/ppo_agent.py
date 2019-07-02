@@ -31,7 +31,8 @@ class PPOAgent(BaseAgent):
               max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
               callback=None,  # you can do anything in the callback, since it takes locals(), globals()
               adam_epsilon=1e-5,
-              schedule='constant'  # annealing for stepsize parameters (epsilon and adam)
+              schedule='constant',  # annealing for stepsize parameters (epsilon and adam)
+              opponent='latest'  # opponent type
               ):
         # print(ob_space)
         self.policy_fn = policy_fn
@@ -86,7 +87,7 @@ class PPOAgent(BaseAgent):
 
         def train_phase(i, statistics: Statistics, progress):
             # print(self.scope + ("avg util: %.5f" % self.average_utility))
-            env = self.pull("latest")
+            env = self.pull(opponent)
             seg_gen = self._traj_segment_generator(self.pi, env, timesteps_per_actorbatch, stochastic=True)
 
             episodes_so_far = 0
@@ -250,7 +251,8 @@ class PPOAgent(BaseAgent):
 
         while True:
             prevac = ac
-            ac, vpred = pi.act(stochastic, ob)
+            # ac, vpred = pi.act(stochastic, ob)
+            ac, vpred = pi.act_with_explore(stochastic, ob, .1)
             # Slight weirdness here because we need value function at time T
             # before returning segment [0, T-1] so we get the correct
             # terminal value

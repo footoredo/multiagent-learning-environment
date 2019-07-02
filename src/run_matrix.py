@@ -31,7 +31,8 @@ ppo_agent_cnt = 0
 
 lr_schedule = "constant"
 init_lr = 5e-4 * 4
-experiment_name = "_".join([lr_schedule, "{:.0e}".format(Decimal(init_lr))])
+opponent = "average"
+experiment_name = "_".join([lr_schedule, "{:.0e}".format(Decimal(init_lr)), opponent])
 
 
 def get_make_ppo_agent(timesteps_per_actorbatch, max_episodes):
@@ -44,8 +45,8 @@ def get_make_ppo_agent(timesteps_per_actorbatch, max_episodes):
         agent = PPOAgent(name="ppo_agent_%d" % ppo_agent_cnt, policy_fn=policy,
                          ob_space=observation_space, ac_space=action_space, handlers=handlers,
                          timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0.0,
-                         optim_epochs=1, optim_stepsize=init_lr,
-                         gamma=0.99, lam=0.95, max_episodes=max_episodes, schedule=lr_schedule)
+                         optim_epochs=8, optim_stepsize=init_lr,
+                         gamma=0.99, lam=0.95, max_episodes=max_episodes, schedule=lr_schedule, opponent=opponent)
         ppo_agent_cnt += 1
         return agent
     return make_ppo_agent
@@ -134,7 +135,7 @@ if __name__ == "__main__":
         if train:
             n_ep = 10000
             t_ev = 20
-            controller = NaiveController(env, [get_make_ppo_agent(1, 4), get_make_ppo_agent(1, 4)])
+            controller = NaiveController(env, [get_make_ppo_agent(32, 256), get_make_ppo_agent(32, 256)])
             local_results, global_results = \
                 controller.train(max_steps=n_ep, policy_store_every=None, test_every=t_ev, test_max_steps=100)
             eob = env.get_ob_encoders()[0](np.zeros(1))
