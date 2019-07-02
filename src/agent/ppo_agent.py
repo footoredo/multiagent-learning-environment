@@ -86,7 +86,7 @@ class PPOAgent(BaseAgent):
 
         def train_phase(i, statistics: Statistics, progress):
             # print(self.scope + ("avg util: %.5f" % self.average_utility))
-            env = self.pull("average")
+            env = self.pull("latest")
             seg_gen = self._traj_segment_generator(self.pi, env, timesteps_per_actorbatch, stochastic=True)
 
             episodes_so_far = 0
@@ -165,7 +165,7 @@ class PPOAgent(BaseAgent):
                 else:
                     raise NotImplementedError
 
-                cur_lrmult *= 1e-2 / np.sqrt(progress + 1e-2)
+                # cur_lrmult *= 1e-2 / np.sqrt(progress + 1e-2)
                 # print(1e-2 / np.sqrt(progress))
 
                 self.average_utility = self.average_utility * self.tot + np.sum(seg["rew"])
@@ -299,9 +299,9 @@ class PPOAgent(BaseAgent):
         for t in reversed(range(T)):
             nonterminal = 1 - new[t + 1]
             # print(nonterminal)
-            # delta[t] = rew[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
+            delta[t] = rew[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
             # print(delta)
-            delta[t] = rew[t]
+            # delta[t] = rew[t]
             gaelam[t] = lastgaelam = delta[t] + gamma * lam * nonterminal * lastgaelam
         # print(seg["adv"])
         seg["tdlamret"] = seg["adv"] + seg["vpred"]
@@ -319,7 +319,8 @@ class PPOAgent(BaseAgent):
             # delete ass
 
         def act_fn(ob):
-            ac, vpred = self.curpi.act_with_explore(stochastic=True, ob=ob, explore_prob=1e-2)
+            # ac, vpred = self.curpi.act_with_explore(stochastic=True, ob=ob, explore_prob=1e-2)
+            ac, ypred = self.curpi.act(stochastic=True, ob=ob)
             # print(ac)
             return ac
 

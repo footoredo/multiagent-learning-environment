@@ -67,7 +67,8 @@ class NaiveController(BaseController):
         self.policy_store_every = policy_store_every
         # env = self.env if update_handler is None else MonitorEnv(self.env, update_handler)
         env = self.env
-        results = []
+        local_results = []
+        global_results = []
         self.agents = [agent_fn(observation_space=env.get_observation_space(i),
                                 action_space=env.get_action_space(i),
                                 handlers=self.get_handlers(i))
@@ -86,7 +87,10 @@ class NaiveController(BaseController):
                 now_time = time.time()
                 print("\n### Step %d / %d" % (self.step, max_steps), now_time - last_time)
                 last_time = now_time
-                results.append(self.run_test(test_max_steps))
+                local_result, global_result = self.run_test(test_max_steps)
+                local_results.append(local_result)
+                global_results.append(global_result)
+
             if show_every is not None and self.step % show_every == 0 and self.step > 0:
                 self.show()
             for i, agent in enumerate(self.agents):
@@ -96,7 +100,7 @@ class NaiveController(BaseController):
         if test_every is not None:
             self.statistics.show_statistics()
 
-        return results
+        return local_results, global_results
 
     @staticmethod
     def show_statistics(cnt):
@@ -115,7 +119,7 @@ class NaiveController(BaseController):
         self._test(max_steps, update_handler=double_update_handler)
         local_statistics.show_statistics()
         self.statistics.show_statistics()
-        return local_statistics.export_statistics()
+        return local_statistics.export_statistics(), self.statistics.export_statistics()
         # return self.statistics.export_statistics()
 
     def run_test_old(self, max_steps):
