@@ -65,7 +65,11 @@ def show_prob(res):
 if __name__ == "__main__":
     result0 = pickle.load(open("wolf_adv_5e-4_global.obj", "rb"))
     result1 = pickle.load(open("constant_5e-4_global.obj", "rb"))
+    result2 = pickle.load(open("constant_2e-3_global.obj", "rb"))
     result0 = get_exploitability(result0)
     result1 = get_exploitability(result1)
-    show_merged([result0, result1], sources=["wolf_5e-4_4x", "constant_5e-4"], data_field="exploitability")
+    result2 = get_exploitability(result2)
+    show_merged([result0, result1, result2],
+                sources=["wolf_5e-4_4x", "constant_5e-4", "constant_2e-3"],
+                data_field="exploitability")
 
