@@ -81,12 +81,18 @@ if __name__ == "__main__":
     #     s = 0.
     #     T = 10
     #     for _ in range(T):
+    res = {"episode": [], "exploitability": []}
     for p in [.3]:
         for _ in range(1):
             env = SecurityEnv(n_slots=2, n_types=2, prior=[p, 1. - p], n_rounds=2)
             if train:
+                max_steps = 5000
+                test_every = 10
                 controller = NaiveController(env, [get_make_ppo_agent(8, 16), get_make_ppo_agent(8, 16)])
-                controller.train(max_steps=50000, policy_store_every=None, test_every=100, test_max_steps=500)
+                _, _, exp = controller.train(max_steps=max_steps, policy_store_every=None, test_every=test_every, test_max_steps=500)
+                for i in range(test_every, max_steps, test_every):
+                    res["episode"].append(i)
+                    res["exploitability"].append(exp[i // test_every - 1])
             else:
                 lie_p = env.get_lie_prob()
                 print(p, lie_p)
@@ -98,5 +104,5 @@ if __name__ == "__main__":
 
     df = pd.DataFrame(data=res)
     sns.set()
-    sns.relplot(x="p", y="lie_p", data=df)
+    sns.relplot(x="episode", y="exploitability", data=df)
     plt.show()

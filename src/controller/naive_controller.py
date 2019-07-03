@@ -63,7 +63,7 @@ class NaiveController(BaseController):
             self.policies[i][-1] = policy
 
     def _train(self, max_steps=10000, policy_store_every=100, test_every=100,
-               show_every=None, test_max_steps=100):
+               show_every=None, test_max_steps=100, record_exploitability=False):
         self.policy_store_every = policy_store_every
         # env = self.env if update_handler is None else MonitorEnv(self.env, update_handler)
         env = self.env
@@ -82,6 +82,8 @@ class NaiveController(BaseController):
 
         self.statistics = Statistics(self.env) if test_every is not None else None
 
+        exploitability = []
+
         for self.step in range(max_steps):
             if test_every is not None and self.step % test_every == 0 and self.step > 0:
                 now_time = time.time()
@@ -90,6 +92,8 @@ class NaiveController(BaseController):
                 local_result, global_result = self.run_test(test_max_steps)
                 local_results.append(local_result)
                 global_results.append(global_result)
+                if record_exploitability:
+                    exploitability.append(self.env.calc_exploitability(0, self.statistics.get_avg_strategy(0)))
 
             if show_every is not None and self.step % show_every == 0 and self.step > 0:
                 self.show()
@@ -100,7 +104,7 @@ class NaiveController(BaseController):
         if test_every is not None:
             self.statistics.show_statistics()
 
-        return local_results, global_results
+        return local_results, global_results, exploitability
 
     @staticmethod
     def show_statistics(cnt):

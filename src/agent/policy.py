@@ -3,7 +3,7 @@ class Policy:
         self.act_fn = act_fn
 
     def act(self, obs):
-        return self.act_fn(obs)
+        action = self.act_fn(obs)
 
     def act_clean(self, obs):
         action = self.act_fn(obs)
@@ -11,3 +11,4 @@ class Policy:
             return action[0]
         else:
             return action
+

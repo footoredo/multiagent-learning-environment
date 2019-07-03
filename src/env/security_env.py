@@ -1,7 +1,9 @@
 from env.base_env import BaseEnv
+from agent.policy import Policy
 from gym import spaces
 import numpy as np
 import subprocess
+from copy import deepcopy
 
 
 class GambitSolver:
@@ -148,6 +150,8 @@ class SecurityEnv(BaseEnv):
         self.gambit_solver = GambitSolver(n_slots=n_slots, n_types=n_types, n_stages=n_rounds, payoff=self.payoff, prior=self.prior)
         self.gambit_solver.generate()
 
+        self.attacker_exploitability_calculator = self._AttackerExploitabilityCalculator(self)
+
     def get_lie_prob(self):
         # p00, p01, p10, p11 = self.gambit_solver.solve()
         # v0 = self.payoff[0, 0, 0, 0] * p10 + self.payoff[0, 0, 1, 0] * p11
@@ -245,4 +249,72 @@ class SecurityEnv(BaseEnv):
 
         return self._get_ob(), [atk_rew, dfd_rew], [self.atk_type, self.atk_type], self.rounds_so_far >= self.n_rounds
 
-    def calc_exploitability(self, ):
+    def calc_exploitability(self, i, strategy):
+        if i == 0:
+            return self._calc_attacker_exploitability(strategy)
+        else:
+            raise NotImplementedError
+
+    def _calc_attacker_exploitability(self, attacker_strategy):
+        return self.attacker_exploitability_calculator.run(attacker_strategy)
+
+    class _AttackerExploitabilityCalculator(object):
+        def __init__(self, env):
+            self.cache = None
+            self.strategy = None
+            self.n_slots = env.n_slots
+            self.n_types = env.n_types
+            self.n_rounds = env.n_rounds
+            self.prior = env.prior
+            self.payoff = env.payoff
+
+        def _get_def_payoff(self, atk_ac, def_ac):
+            return self.payoff[0, atk_ac, def_ac, 1]
+
+        def _reset(self):
+            self.cache = dict()
+
+        def _convert_to_type_ob(self, t):
+            ob = np.zeros(shape=self.n_slots)
+            ob[t] = 1.0
+            return ob
+
+        def _convert_to_atk_ob(self, history, t):
+            ob = np.zeros(shape=(self.n_rounds - 1, 2, self.n_slots + 1))
+            r = len(history)
+            # print(r)
+            for i in range(r):
+                ob[i][0][history[i][0]] = 1.0
+                ob[i][1][history[i][1]] = 1.0
+            for i in range(r, self.n_rounds - 1):
+                ob[i][0][self.n_slots] = 1.0
+                ob[i][0][self.n_slots] = 1.0
+            ob = np.concatenate([self._convert_to_type_ob(t), ob.reshape(-1)])
+            return ob
+
+        def _recursive(self, history):
+            if len(history) >= self.n_rounds:
+                return 0.0
+            if str(history) in self.cache:
+                return self.cache[str(history)]
+            else:
+                atk_strategy = np.zeros(self.n_slots)
+                for t in range(self.n_types):
+                    atk_ob = self._convert_to_atk_ob(history, t)
+                    atk_strategy += np.array(self.strategy(atk_ob)) * self.prior[t]
+
+                max_ret = -1e100
+                for def_ac in range(self.n_slots):
+                    ret = 0.
+                    for atk_ac in range(self.n_slots):
+                        p = atk_strategy[atk_ac]
+                        r = self._get_def_payoff(atk_ac, def_ac) + self._recursive(history + [[atk_ac, def_ac]])
+                        ret += r * p
+                    max_ret = max(max_ret, ret)
+                self.cache[str(history)] = max_ret
+                return max_ret
+
+        def run(self, attacker_strategy):
+            self._reset()
+            self.strategy = attacker_strategy
+            return self._recursive([])

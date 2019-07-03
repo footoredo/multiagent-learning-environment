@@ -36,6 +36,9 @@ class BaseEnv(ABC):
             return str(ob)
         return [ob_namer] * self.num_agents
 
+    def calc_exploitability(self, i, strategy):
+        raise NotImplementedError
+
     @abstractmethod
     def reset(self, debug=False):
         """

@@ -53,6 +53,16 @@ class Statistics(object):
                 return random.choices(range(self.n_acs[i]), weights=self.stats[i][eob])[0]
         return Policy(act_fn)
 
+    def get_avg_strategy(self, i):
+        def strategy(ob):
+            eob = self.ob_encoders[i](ob)
+            if eob not in self.stats[i]:
+                return np.ones(self.n_acs[i]) / self.n_acs[i]
+            else:
+                # print(i, self.stats[i][eob])
+                return np.array(self.stats[i][eob])
+        return strategy
+
     @staticmethod
     def to_freq(arr):
         return arr / np.sum(arr)
