@@ -213,7 +213,7 @@ class SecurityEnv(BaseEnv):
 
         return [atk_ob_namer, dfd_ob_namer]
 
-    def reset(self):
+    def reset(self, debug=False):
         self.rounds_so_far = 0
         self.ac_history = np.zeros(shape=self.ob_shape, dtype=np.float32)
         for r in range(self.n_rounds - 1):
@@ -244,3 +244,5 @@ class SecurityEnv(BaseEnv):
         self.rounds_so_far += 1
 
         return self._get_ob(), [atk_rew, dfd_rew], [self.atk_type, self.atk_type], self.rounds_so_far >= self.n_rounds
+
+    def calc_exploitability(self, ):
