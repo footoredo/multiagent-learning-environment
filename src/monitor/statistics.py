@@ -60,7 +60,7 @@ class Statistics(object):
                 return np.ones(self.n_acs[i]) / self.n_acs[i]
             else:
                 # print(i, self.stats[i][eob])
-                return np.array(self.stats[i][eob])
+                return np.array(self.to_freq(self.stats[i][eob]))
         return strategy
 
     @staticmethod

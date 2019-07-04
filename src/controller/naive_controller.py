@@ -93,7 +93,9 @@ class NaiveController(BaseController):
                 local_results.append(local_result)
                 global_results.append(global_result)
                 if record_exploitability:
-                    exploitability.append(self.env.calc_exploitability(0, self.statistics.get_avg_strategy(0)))
+                    exp = self.env.calc_exploitability(0, self.statistics.get_avg_strategy(0))
+                    exploitability.append(exp)
+                    print("Current Exploitability:", exp)
 
             if show_every is not None and self.step % show_every == 0 and self.step > 0:
                 self.show()

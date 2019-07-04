@@ -11,6 +11,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import logger
 import numpy as np
+import pickle
 
 
 def make_dummy_agent(observation_space, action_space, handlers):
@@ -38,8 +39,8 @@ def get_make_ppo_agent(timesteps_per_actorbatch, max_episodes):
         agent = PPOAgent(name="ppo_agent_%d" % ppo_agent_cnt, policy_fn=policy,
                          ob_space=observation_space, ac_space=action_space, handlers=handlers,
                          timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0.0,
-                         optim_epochs=1, optim_stepsize=5e-6,
-                         gamma=0.99, lam=0.95, max_episodes=max_episodes, schedule="constant")
+                         optim_epochs=1, optim_stepsize=5e-5,
+                         gamma=0.99, lam=0.95, max_episodes=max_episodes, schedule="wolf_adv")
         ppo_agent_cnt += 1
         return agent
     return make_ppo_agent
@@ -86,10 +87,11 @@ if __name__ == "__main__":
         for _ in range(1):
             env = SecurityEnv(n_slots=2, n_types=2, prior=[p, 1. - p], n_rounds=2)
             if train:
-                max_steps = 5000
-                test_every = 10
+                max_steps = 10000
+                test_every = 100
                 controller = NaiveController(env, [get_make_ppo_agent(8, 16), get_make_ppo_agent(8, 16)])
-                _, _, exp = controller.train(max_steps=max_steps, policy_store_every=None, test_every=test_every, test_max_steps=500)
+                _, _, exp = controller.train(max_steps=max_steps, policy_store_every=None, test_every=test_every, test_max_steps=500, record_exploitability=True)
+                print(exp)
                 for i in range(test_every, max_steps, test_every):
                     res["episode"].append(i)
                     res["exploitability"].append(exp[i // test_every - 1])
@@ -102,7 +104,9 @@ if __name__ == "__main__":
         # res["p"].append(p)
         # res["lie_p"].append(s / T)
 
-    df = pd.DataFrame(data=res)
-    sns.set()
-    sns.relplot(x="episode", y="exploitability", data=df)
-    plt.show()
+    pickle.dump(res, open("sec_exp.obj", "wb"))
+    # df = pd.DataFrame(data=res)
+    # sns.set()
+    # sns.relplot(x="episode", y="exploitability", data=df)
+    # plt.show()
+    # plt.savefig("sec_exp.png")

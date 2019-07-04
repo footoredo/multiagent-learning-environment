@@ -4,3 +4,4 @@
 venv
 src/pull_from_c.sh
 *.efg
+screenlog*
