@@ -303,7 +303,7 @@ class SecurityEnv(BaseEnv):
                     atk_ob = self._convert_to_atk_ob(history, t)
                     atk_strategy = self.strategy(atk_ob)
                     for i in range(self.n_slots):
-                        atk_strategy_type[i][t] += atk_strategy[i] * prior[i]
+                        atk_strategy_type[i][t] += atk_strategy[i] * prior[t]
 
                 max_ret = -1e100
                 for def_ac in range(self.n_slots):
