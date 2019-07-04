@@ -288,27 +288,30 @@ class SecurityEnv(BaseEnv):
                 ob[i][1][history[i][1]] = 1.0
             for i in range(r, self.n_rounds - 1):
                 ob[i][0][self.n_slots] = 1.0
-                ob[i][0][self.n_slots] = 1.0
+                ob[i][1][self.n_slots] = 1.0
             ob = np.concatenate([self._convert_to_type_ob(t), ob.reshape(-1)])
             return ob
 
-        def _recursive(self, history):
+        def _recursive(self, history, prior):
             if len(history) >= self.n_rounds:
                 return 0.0
             if str(history) in self.cache:
                 return self.cache[str(history)]
             else:
-                atk_strategy = np.zeros(self.n_slots)
+                atk_strategy_type = np.zeros(shape=(self.n_slots, self.n_types))
                 for t in range(self.n_types):
                     atk_ob = self._convert_to_atk_ob(history, t)
-                    atk_strategy += np.array(self.strategy(atk_ob)) * self.prior[t]
+                    atk_strategy = self.strategy(atk_ob)
+                    for i in range(self.n_slots):
+                        atk_strategy_type[i][t] += atk_strategy[i] * prior[i]
 
                 max_ret = -1e100
                 for def_ac in range(self.n_slots):
                     ret = 0.
                     for atk_ac in range(self.n_slots):
-                        p = atk_strategy[atk_ac]
-                        r = self._get_def_payoff(atk_ac, def_ac) + self._recursive(history + [[atk_ac, def_ac]])
+                        p = np.sum(atk_strategy_type[atk_ac])
+                        r = self._get_def_payoff(atk_ac, def_ac) + \
+                            self._recursive(history + [[atk_ac, def_ac]], atk_strategy_type[atk_ac] / p)
                         ret += r * p
                     max_ret = max(max_ret, ret)
                 self.cache[str(history)] = max_ret
@@ -317,4 +320,4 @@ class SecurityEnv(BaseEnv):
         def run(self, attacker_strategy):
             self._reset()
             self.strategy = attacker_strategy
-            return self._recursive([])
+            return self._recursive([], self.prior)
