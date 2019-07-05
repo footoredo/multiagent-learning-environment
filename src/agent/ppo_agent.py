@@ -35,6 +35,7 @@ class PPOAgent(BaseAgent):
               opponent='latest'  # opponent type
               ):
         # print(ob_space)
+        self.schedule = schedule
         self.policy_fn = policy_fn
         self.ob_space = ob_space
         self.ac_space = ac_space
@@ -130,6 +131,10 @@ class PPOAgent(BaseAgent):
                 d = Dataset(dict(ob=ob, ac=ac, atarg=atarg, vtarg=tdlamret), deterministic=pi.recurrent)
                 optim_batchsize = ob.shape[0]
 
+                if type(self.schedule) == tuple:
+                    schedule, k = self.schedule
+                else:
+                    schedule = self.schedule
                 if schedule == 'constant':
                     cur_lrmult = 1.0
                 elif schedule == "dec":
@@ -138,12 +143,12 @@ class PPOAgent(BaseAgent):
                     cur_lrmult = max(1.0 - float(timesteps_so_far) / max_timesteps, 0)
                 elif schedule == "wolf":
                     if np.average(seg["rew"]) < self.average_utility:
-                        cur_lrmult = 20.0
+                        cur_lrmult = k
                     else:
                         cur_lrmult = 1.0
                 elif schedule == "wolf2":
                     if np.average(seg["rew"]) < self.average_utility - 0.01:
-                        cur_lrmult = 20.0
+                        cur_lrmult = k
                     else:
                         cur_lrmult = 1.0
                     # cur_lrmult *= max(1.0 - float(timesteps_so_far) / max_timesteps, 0)
@@ -151,18 +156,18 @@ class PPOAgent(BaseAgent):
                     if np.average(seg["delta"]) > 0.:
                         cur_lrmult = 1.0
                     else:
-                        cur_lrmult = 4.0
+                        cur_lrmult = k
                 elif schedule == "wolf_stat":
                     assert len(seg["rew"]) == 1
                     if seg["rew"][0] > statistics.get_avg_rew(i, seg["ob"][0]):
                         cur_lrmult = 1.0
                     else:
-                        cur_lrmult = 20.0
+                        cur_lrmult = k
                 elif schedule == "wolf_stat_matrix":
                     if np.average(seg["rew"]) > statistics.get_avg_rew(i, seg["ob"][0]):
                         cur_lrmult = 1.0
                     else:
-                        cur_lrmult = 4.0
+                        cur_lrmult = k
                 else:
                     raise NotImplementedError
 
@@ -251,8 +256,8 @@ class PPOAgent(BaseAgent):
 
         while True:
             prevac = ac
-            # ac, vpred = pi.act(stochastic, ob)
-            ac, vpred = pi.act_with_explore(stochastic, ob, .1)
+            ac, vpred = pi.act(stochastic, ob)
+            # ac, vpred = pi.act_with_explore(stochastic, ob, .1)
             # Slight weirdness here because we need value function at time T
             # before returning segment [0, T-1] so we get the correct
             # terminal value

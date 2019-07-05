@@ -129,6 +129,7 @@ class SecurityEnv(BaseEnv):
         self.atk_type = None
         self.type_ob = None
 
+        np.random.seed(123)
         self.atk_rew = np.random.rand(n_types, n_slots) * value_range
         self.atk_pen = -np.random.rand(n_types, n_slots) * value_range
         self.dfd_rew = np.random.rand(n_slots) * value_range
@@ -314,6 +315,8 @@ class SecurityEnv(BaseEnv):
                     ret = 0.
                     for atk_ac in range(self.n_slots):
                         p = np.sum(atk_strategy_type[atk_ac])
+                        if p < 1e-5:
+                            continue
                         r = self._get_def_payoff(atk_ac, def_ac) + \
                             self._recursive(history + [[atk_ac, def_ac]], atk_strategy_type[atk_ac] / p)
                         ret += r * p

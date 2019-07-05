@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import logger
 import numpy as np
 import pickle
+from decimal import Decimal
 
 
 def make_dummy_agent(observation_space, action_space, handlers):
@@ -28,6 +29,10 @@ def make_self_play_agent(observation_space, action_space, handlers):
 
 ppo_agent_cnt = 0
 
+learning_rate = 5e-6
+schedule = ("wolf_adv", 10.0)
+opponent = "average"
+
 
 def get_make_ppo_agent(timesteps_per_actorbatch, max_episodes):
     def make_ppo_agent(observation_space, action_space, handlers):
@@ -39,8 +44,9 @@ def get_make_ppo_agent(timesteps_per_actorbatch, max_episodes):
         agent = PPOAgent(name="ppo_agent_%d" % ppo_agent_cnt, policy_fn=policy,
                          ob_space=observation_space, ac_space=action_space, handlers=handlers,
                          timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0.0,
-                         optim_epochs=1, optim_stepsize=5e-5,
-                         gamma=0.99, lam=0.95, max_episodes=max_episodes, schedule="wolf_adv")
+                         optim_epochs=1, optim_stepsize=learning_rate,
+                         gamma=0.99, lam=0.95, max_episodes=max_episodes,
+                         schedule=schedule, opponent=opponent)
         ppo_agent_cnt += 1
         return agent
     return make_ppo_agent
@@ -82,19 +88,25 @@ if __name__ == "__main__":
     #     s = 0.
     #     T = 10
     #     for _ in range(T):
-    res = {"episode": [], "exploitability": []}
+    res = {"episode": [], "exploitability": [], "player": []}
     for p in [.3]:
         for _ in range(1):
             env = SecurityEnv(n_slots=2, n_types=2, prior=[p, 1. - p], n_rounds=2)
             if train:
                 max_steps = 10000
-                test_every = 100
-                controller = NaiveController(env, [get_make_ppo_agent(8, 16), get_make_ppo_agent(8, 16)])
-                _, _, exp = controller.train(max_steps=max_steps, policy_store_every=None, test_every=test_every, test_max_steps=500, record_exploitability=True)
+                test_every = 10
+                controller = NaiveController(env, [get_make_ppo_agent(2, 16), get_make_ppo_agent(2, 16)])
+                _, _, exp = controller.train(max_steps=max_steps, policy_store_every=None, test_every=test_every,
+                                             test_max_steps=500, record_exploitability=True)
                 print(exp)
                 for i in range(test_every, max_steps, test_every):
                     res["episode"].append(i)
-                    res["exploitability"].append(exp[i // test_every - 1])
+                    res["exploitability"].append(exp[i // test_every - 1][0])
+                    res["player"].append("attacker")
+
+                    res["episode"].append(i)
+                    res["exploitability"].append(exp[i // test_every - 1][1])
+                    res["player"].append("defender")
             else:
                 lie_p = env.get_lie_prob()
                 print(p, lie_p)
@@ -104,9 +116,13 @@ if __name__ == "__main__":
         # res["p"].append(p)
         # res["lie_p"].append(s / T)
 
-    pickle.dump(res, open("sec_exp.obj", "wb"))
-    # df = pd.DataFrame(data=res)
-    # sns.set()
-    # sns.relplot(x="episode", y="exploitability", data=df)
-    # plt.show()
-    # plt.savefig("sec_exp.png")
+    exp_name = "_".join(["security",
+                         "{:.0e}".format(Decimal(learning_rate)),
+                         ":".join(list(map(str, schedule))),
+                         opponent])
+    pickle.dump(res, open(exp_name + ".obj", "wb"))
+    df = pd.DataFrame(data=res)
+    sns.set()
+    sns.lineplot(x="episode", y="exploitability", hue="player", data=df)
+    plt.savefig(exp_name + ".png")
+    plt.show()

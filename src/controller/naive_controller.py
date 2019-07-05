@@ -93,7 +93,9 @@ class NaiveController(BaseController):
                 local_results.append(local_result)
                 global_results.append(global_result)
                 if record_exploitability:
-                    exp = self.env.calc_exploitability(0, self.statistics.get_avg_strategy(0))
+                    exp = []
+                    for i in range(self.num_agents):
+                        exp.append(self.env.calc_exploitability(i, self.statistics.get_avg_strategy(i)))
                     exploitability.append(exp)
                     print("Current Exploitability:", exp)
 
