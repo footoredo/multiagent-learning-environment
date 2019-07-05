@@ -4,6 +4,7 @@ from env.monitor_env import MonitorEnv
 from controller.base_controller import BaseController
 from agent.base_agent import BaseAgent
 from monitor.statistics import Statistics
+from agent.policy import MixedPolicy
 import random
 import time
 import numpy as np
@@ -41,7 +42,11 @@ class NaiveController(BaseController):
             # if type(version) == int:
             #     version -= i
             if version == "average":
-                fixed_policies = [self.statistics.get_avg_policy(j) for j in range(self.num_agents) if j != i]
+                # fixed_policies = [self.statistics.get_avg_policy(j) for j in range(self.num_agents) if j != i]
+                fixed_policies = [MixedPolicy([self.statistics.get_avg_policy(j),
+                                               self.get_policy_with_version(self.policies[j], version="latest")],
+                                              [.9, .1]
+                                              ) for j in range(self.num_agents) if j != i]
             else:
                 fixed_policies = [self.get_policy_with_version(
                     self.policies[j], version=version
