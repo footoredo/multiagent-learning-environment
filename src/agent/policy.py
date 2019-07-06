@@ -23,7 +23,7 @@ class MixedPolicy(Policy):
         self.probabilities = probabilities
 
         def act_fn(obs):
-            p = random.choice(self.policies, self.probabilities)[0]
+            p = random.choices(self.policies, weights=self.probabilities)[0]
             return p.act(obs)
 
         super().__init__(act_fn)

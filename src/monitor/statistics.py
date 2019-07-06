@@ -2,22 +2,41 @@ import numpy as np
 from env.base_env import BaseEnv
 from agent.policy import Policy
 import random
+import pickle
 
 
 class Statistics(object):
-    def __init__(self, env: BaseEnv):
-        self._init(env.num_agents, env.get_ob_encoders(), env.get_ob_namers(), env.get_ac_encoders(), env.get_n_acs())
+    def __init__(self, env: BaseEnv, save_file=None):
+        self.n_agents = env.num_agents
+        self.ob_encoders = env.get_ob_encoders()
+        self.ob_namers = env.get_ob_namers()
+        self.ac_encoders = env.get_ac_encoders()
+        self.n_acs = env.get_n_acs()
+        self.ob_maps = None
+        self.stats = None
+        self.sum_rews = None
+        self.tot_steps = None
+        if save_file is None:
+            self.reset()
+        else:
+            self.load(save_file)
 
-    def _init(self, n_agents, ob_encoders, ob_namers, ac_encoders, n_acs):
-        self.n_agents = n_agents
-        self.ob_encoders = ob_encoders
-        self.ob_namers = ob_namers
-        self.ob_maps = [{} for _ in range(n_agents)]
-        self.stats = [{} for _ in range(n_agents)]
-        self.sum_rews = [{} for _ in range(n_agents)]
-        self.ac_encoders = ac_encoders
-        self.n_acs = n_acs
+    def reset(self):
+        self.ob_maps = [{} for _ in range(self.n_agents)]
+        self.stats = [{} for _ in range(self.n_agents)]
+        self.sum_rews = [{} for _ in range(self.n_agents)]
         self.tot_steps = 0
+
+    def save(self, file):
+        if type(file) == str:
+            file = open(file, "wb")
+        to_export = (self.ob_maps, self.stats, self.sum_rews, self.tot_steps)
+        pickle.dump(to_export, file)
+
+    def load(self, file):
+        if type(file) == str:
+            file = open(file, "rb")
+        self.ob_maps, self.stats, self.sum_rews, self.tot_steps = pickle.load(file)
 
     def get_update_handler(self):
         def update_handler(last_obs, start, actions, rews, infos, done, obs):

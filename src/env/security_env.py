@@ -107,12 +107,13 @@ class GambitSolver:
 
 
 class SecurityEnv(BaseEnv):
-    def __init__(self, n_slots, n_types, prior, n_rounds, value_range=10.):
+    def __init__(self, n_slots, n_types, prior, n_rounds, value_range=10., zero_sum=False, seed=None):
         self.n_slots = n_slots
         self.n_types = n_types
         self.prior = prior if prior is not None else np.random.rand(n_types)
         self.prior /= np.sum(self.prior)
         self.n_rounds = n_rounds
+        self.zero_sum = zero_sum
 
         self.ob_shape = (n_rounds - 1, 2, n_slots + 1)
         self.ob_len = np.prod(self.ob_shape)
@@ -129,7 +130,8 @@ class SecurityEnv(BaseEnv):
         self.atk_type = None
         self.type_ob = None
 
-        np.random.seed(123)
+        if seed is not None:
+            np.random.seed(seed)
         self.atk_rew = np.random.rand(n_types, n_slots) * value_range
         self.atk_pen = -np.random.rand(n_types, n_slots) * value_range
         self.dfd_rew = np.random.rand(n_slots) * value_range
@@ -141,10 +143,16 @@ class SecurityEnv(BaseEnv):
                 for j in range(n_slots):
                     if i == j:
                         self.payoff[t, i, j, 0] = self.atk_pen[t, i]
-                        self.payoff[t, i, j, 1] = self.dfd_rew[j]
+                        if zero_sum:
+                            self.payoff[t, i, j, 1] = -self.atk_pen[t, i]
+                        else:
+                            self.payoff[t, i, j, 1] = self.dfd_rew[j]
                     else:
                         self.payoff[t, i, j, 0] = self.atk_rew[t, i]
-                        self.payoff[t, i, j, 1] = self.dfd_pen[j]
+                        if zero_sum:
+                            self.payoff[t, i, j, 1] = -self.atk_rew[t, i]
+                        else:
+                            self.payoff[t, i, j, 1] = self.dfd_pen[j]
 
         # print(self.payoff[0, :, :, 0])
 
@@ -231,15 +239,18 @@ class SecurityEnv(BaseEnv):
         return self._get_ob()
 
     def step(self, actions):
-        if actions[0] == actions[1]:
-            atk_rew = self.atk_pen[self.atk_type][actions[0]]
-            dfd_rew = self.dfd_rew[actions[1]]
-        else:
-            atk_rew = self.atk_rew[self.atk_type][actions[0]]
-            dfd_rew = self.dfd_pen[actions[1]]
+        # if actions[0] == actions[1]:
+        #     atk_rew = self.atk_pen[self.atk_type][actions[0]]
+        #     dfd_rew = self.dfd_rew[actions[1]]
+        # else:
+        #     atk_rew = self.atk_rew[self.atk_type][actions[0]]
+        #     dfd_rew = self.dfd_pen[actions[1]]
 
-        assert np.isclose(atk_rew, self.payoff[self.atk_type, actions[0], actions[1], 0])
-        assert np.isclose(dfd_rew, self.payoff[self.atk_type, actions[0], actions[1], 1])
+        # assert np.isclose(atk_rew, self.payoff[self.atk_type, actions[0], actions[1], 0])
+        # assert np.isclose(dfd_rew, self.payoff[self.atk_type, actions[0], actions[1], 1])
+
+        atk_rew = self.payoff[self.atk_type, actions[0], actions[1], 0]
+        dfd_rew = self.payoff[self.atk_type, actions[0], actions[1], 1]
 
         if self.rounds_so_far < self.n_rounds - 1:
             self.ac_history[self.rounds_so_far][0][self.n_slots] = 0.
@@ -273,8 +284,11 @@ class SecurityEnv(BaseEnv):
             self.prior = env.prior
             self.payoff = env.payoff
 
-        def _get_def_payoff(self, atk_ac, def_ac):
-            return self.payoff[0, atk_ac, def_ac, 1]
+        def _get_def_payoff(self, atk_ac, def_ac, prob):
+            ret = 0.
+            for t in range(self.n_types):
+                ret += prob[t] * self.payoff[t, atk_ac, def_ac, 1]
+            return ret
 
         def _reset(self):
             self.cache = dict()
@@ -315,10 +329,11 @@ class SecurityEnv(BaseEnv):
                     ret = 0.
                     for atk_ac in range(self.n_slots):
                         p = np.sum(atk_strategy_type[atk_ac])
+                        prob = atk_strategy_type[atk_ac] / p
                         if p < 1e-5:
                             continue
-                        r = self._get_def_payoff(atk_ac, def_ac) + \
-                            self._recursive(history + [[atk_ac, def_ac]], atk_strategy_type[atk_ac] / p)
+                        r = self._get_def_payoff(atk_ac, def_ac, prob) + \
+                            self._recursive(history + [[atk_ac, def_ac]], prob)
                         ret += r * p
                     max_ret = max(max_ret, ret)
                 self.cache[str(history)] = max_ret

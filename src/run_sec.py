@@ -13,6 +13,7 @@ import logger
 import numpy as np
 import pickle
 from decimal import Decimal
+import random
 
 
 def make_dummy_agent(observation_space, action_space, handlers):
@@ -29,9 +30,15 @@ def make_self_play_agent(observation_space, action_space, handlers):
 
 ppo_agent_cnt = 0
 
+# seed = random.randrange(10000)
+seed = 5410
+reset = True
+zero_sum = False
 learning_rate = 5e-6
-schedule = ("wolf_adv", 10.0)
-opponent = "average"
+schedule = ("wolf_adv", 20.0)
+# schedule = "constant"
+train_steps = [1, 1]
+opponent = "latest"
 
 
 def get_make_ppo_agent(timesteps_per_actorbatch, max_episodes):
@@ -91,13 +98,14 @@ if __name__ == "__main__":
     res = {"episode": [], "exploitability": [], "player": []}
     for p in [.3]:
         for _ in range(1):
-            env = SecurityEnv(n_slots=2, n_types=2, prior=[p, 1. - p], n_rounds=2)
+            env = SecurityEnv(n_slots=2, n_types=2, prior=[p, 1. - p], n_rounds=2, zero_sum=zero_sum, seed=seed)
             if train:
-                max_steps = 10000
+                max_steps = 12000
                 test_every = 10
-                controller = NaiveController(env, [get_make_ppo_agent(2, 16), get_make_ppo_agent(2, 16)])
+                controller = NaiveController(env, [get_make_ppo_agent(8, 16), get_make_ppo_agent(8, 16)])
                 _, _, exp = controller.train(max_steps=max_steps, policy_store_every=None, test_every=test_every,
-                                             test_max_steps=500, record_exploitability=True)
+                                             test_max_steps=100, record_exploitability=True, train_steps=train_steps,
+                                             reset=reset)
                 print(exp)
                 for i in range(test_every, max_steps, test_every):
                     res["episode"].append(i)
@@ -116,13 +124,18 @@ if __name__ == "__main__":
         # res["p"].append(p)
         # res["lie_p"].append(s / T)
 
+    folder = "../result/"
     exp_name = "_".join(["security",
+                         "seed:{}".format(seed),
+                         "zs" if zero_sum else "gs",
+                         "reset" if reset else "no-reset",
                          "{:.0e}".format(Decimal(learning_rate)),
                          ":".join(list(map(str, schedule))),
+                         ":".join(list(map(str, train_steps))),
                          opponent])
-    pickle.dump(res, open(exp_name + ".obj", "wb"))
+    pickle.dump(res, open(folder + exp_name + ".obj", "wb"))
     df = pd.DataFrame(data=res)
     sns.set()
     sns.lineplot(x="episode", y="exploitability", hue="player", data=df)
-    plt.savefig(exp_name + ".png")
+    plt.savefig(folder + exp_name + ".png")
     plt.show()

@@ -68,7 +68,9 @@ class NaiveController(BaseController):
             self.policies[i][-1] = policy
 
     def _train(self, max_steps=10000, policy_store_every=100, test_every=100,
-               show_every=None, test_max_steps=100, record_exploitability=False):
+               show_every=None, test_max_steps=100, record_exploitability=False, train_steps=None, reset=False):
+        if train_steps is None:
+            train_steps = [1 for _ in self.agents]
         self.policy_store_every = policy_store_every
         # env = self.env if update_handler is None else MonitorEnv(self.env, update_handler)
         env = self.env
@@ -90,7 +92,12 @@ class NaiveController(BaseController):
         exploitability = []
 
         for self.step in range(max_steps):
+            if reset and self.step / max_steps > .3:
+                self.statistics.reset()
+                print("RESET!")
+                reset = False
             if test_every is not None and self.step % test_every == 0 and self.step > 0:
+            # if random.randrange(0, test_every) < 1:
                 now_time = time.time()
                 print("\n### Step %d / %d" % (self.step, max_steps), now_time - last_time)
                 last_time = now_time
@@ -101,13 +108,15 @@ class NaiveController(BaseController):
                     exp = []
                     for i in range(self.num_agents):
                         exp.append(self.env.calc_exploitability(i, self.statistics.get_avg_strategy(i)))
+                    # exp[0] += 0.633
+                    # exp[1] += 2.387
                     exploitability.append(exp)
                     print("Current Exploitability:", exp)
 
             if show_every is not None and self.step % show_every == 0 and self.step > 0:
                 self.show()
             for i, agent in enumerate(self.agents):
-                for _ in range(1):
+                for _ in range(train_steps[i]):
                     agent.train(i, self.statistics, self.step / max_steps)
 
         if test_every is not None:
