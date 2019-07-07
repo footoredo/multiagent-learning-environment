@@ -92,7 +92,7 @@ class NaiveController(BaseController):
         exploitability = []
 
         for self.step in range(max_steps):
-            if reset and self.step / max_steps > .3:
+            if reset and self.step / max_steps > .1:
                 self.statistics.reset()
                 print("RESET!")
                 reset = False

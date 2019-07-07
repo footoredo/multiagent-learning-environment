@@ -32,8 +32,11 @@ ppo_agent_cnt = 0
 
 # seed = random.randrange(10000)
 seed = 5410
-reset = True
-zero_sum = False
+n_slots = 2
+n_types = 2
+n_rounds = 5
+reset = False
+zero_sum = True
 learning_rate = 5e-6
 schedule = ("wolf_adv", 20.0)
 # schedule = "constant"
@@ -98,9 +101,9 @@ if __name__ == "__main__":
     res = {"episode": [], "exploitability": [], "player": []}
     for p in [.3]:
         for _ in range(1):
-            env = SecurityEnv(n_slots=2, n_types=2, prior=[p, 1. - p], n_rounds=2, zero_sum=zero_sum, seed=seed)
+            env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=[p, 1. - p], n_rounds=n_rounds, zero_sum=zero_sum, seed=seed)
             if train:
-                max_steps = 12000
+                max_steps = 50000
                 test_every = 10
                 controller = NaiveController(env, [get_make_ppo_agent(8, 16), get_make_ppo_agent(8, 16)])
                 _, _, exp = controller.train(max_steps=max_steps, policy_store_every=None, test_every=test_every,
@@ -127,6 +130,7 @@ if __name__ == "__main__":
     folder = "../result/"
     exp_name = "_".join(["security",
                          "seed:{}".format(seed),
+                         "{}-{}-{}".format(n_slots, n_types, n_rounds),
                          "zs" if zero_sum else "gs",
                          "reset" if reset else "no-reset",
                          "{:.0e}".format(Decimal(learning_rate)),
