@@ -4,6 +4,8 @@ from gym import spaces
 import numpy as np
 import subprocess
 from copy import deepcopy
+import csv
+import pickle
 
 
 class GambitSolver:
@@ -114,6 +116,7 @@ class SecurityEnv(BaseEnv):
         self.prior /= np.sum(self.prior)
         self.n_rounds = n_rounds
         self.zero_sum = zero_sum
+        self.seed = seed
 
         self.ob_shape = (n_rounds - 1, 2, n_slots + 1)
         self.ob_len = np.prod(self.ob_shape)
@@ -161,6 +164,25 @@ class SecurityEnv(BaseEnv):
 
         self.attacker_exploitability_calculator = self._AttackerExploitabilityCalculator(self)
         self.defender_exploitability_calculator = self._DefenderExploitabilityCalculator(self)
+
+    def export_settings(self, filename):
+        pickle.dump((self.n_slots, self.n_types, self.prior, self.n_rounds, self.zero_sum, self.seed),
+                    open(filename, "wb"))
+
+    def export_payoff(self, filename):
+        with open(filename, "w", newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            for t in range(self.n_types):
+                data = []
+                for i in range(self.n_slots):
+                    data.append(self.dfd_rew[i])
+                for i in range(self.n_slots):
+                    data.append(self.dfd_pen[i])
+                for i in range(self.n_slots):
+                    data.append(self.atk_rew[t, i])
+                for i in range(self.n_slots):
+                    data.append(self.atk_pen[t, i])
+                writer.writerow(data)
 
     def get_lie_prob(self):
         # p00, p01, p10, p11 = self.gambit_solver.solve()
@@ -402,3 +424,8 @@ class SecurityEnv(BaseEnv):
                 v = self._recursive([], t)
                 ret += self.prior[t] * v
             return ret
+
+
+def import_security_env(filename):
+    n_slots, n_types, prior, n_rounds, zero_sum, seed = pickle.load(open(filename, "rb"))
+    return SecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum, seed=seed)

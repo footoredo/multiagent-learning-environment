@@ -112,6 +112,7 @@ class NaiveController(BaseController):
                     # exp[1] += 2.387
                     exploitability.append(exp)
                     print("Current Exploitability:", exp)
+                    self.run_benchmark()
 
             if show_every is not None and self.step % show_every == 0 and self.step > 0:
                 self.show()
@@ -122,7 +123,24 @@ class NaiveController(BaseController):
         if test_every is not None:
             self.statistics.show_statistics()
 
-        return local_results, global_results, exploitability
+        return local_results, global_results, exploitability, self.run_benchmark(10000)
+
+    def run_benchmark(self, max_steps=500):
+        statistics = Statistics(self.env)
+        benchmark_env = MonitorEnv(self.env, update_handlers=statistics.get_update_handler())
+        final_policies = [self.statistics.get_avg_policy(i) for i in range(len(self.agents))]
+        benchmark_env = ReducedEnv(benchmark_env,
+                                   fixed_indices=range(self.num_agents),
+                                   fixed_policies=final_policies)
+        # print("ASd")
+        benchmark_env.reset()
+        for step in range(max_steps):
+            _, _, _, done = benchmark_env.step([])
+            if done:
+                benchmark_env.reset()
+        avg_rews_per_player = statistics.get_avg_rews_per_player()
+        print(avg_rews_per_player)
+        return avg_rews_per_player
 
     @staticmethod
     def show_statistics(cnt):

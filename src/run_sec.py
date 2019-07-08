@@ -31,12 +31,12 @@ def make_self_play_agent(observation_space, action_space, handlers):
 ppo_agent_cnt = 0
 
 # seed = random.randrange(10000)
-seed = 5410
+seed = 5411
 n_slots = 2
 n_types = 2
-n_rounds = 5
+n_rounds = 2
 reset = False
-zero_sum = True
+zero_sum = False
 learning_rate = 5e-6
 schedule = ("wolf_adv", 20.0)
 # schedule = "constant"
@@ -102,13 +102,17 @@ if __name__ == "__main__":
     for p in [.3]:
         for _ in range(1):
             env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=[p, 1. - p], n_rounds=n_rounds, zero_sum=zero_sum, seed=seed)
+            env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
+            env.export_settings("../result/setting.pkl")
             if train:
-                max_steps = 50000
+                max_steps = 5000
                 test_every = 10
                 controller = NaiveController(env, [get_make_ppo_agent(8, 16), get_make_ppo_agent(8, 16)])
-                _, _, exp = controller.train(max_steps=max_steps, policy_store_every=None, test_every=test_every,
-                                             test_max_steps=100, record_exploitability=True, train_steps=train_steps,
-                                             reset=reset)
+                _, _, exp, avg_rews = controller.train(max_steps=max_steps, policy_store_every=None,
+                                                       test_every=test_every,  test_max_steps=100,
+                                                       record_exploitability=True, train_steps=train_steps,
+                                                       reset=reset)
+                print(np.array(avg_rews) * n_rounds)
                 print(exp)
                 for i in range(test_every, max_steps, test_every):
                     res["episode"].append(i)
