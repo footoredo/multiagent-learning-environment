@@ -130,18 +130,19 @@ if __name__ == "__main__":
             payoff[1][0] * xa0p1 * xa1p0 + payoff[1][1] * xa0p1 * xa1p1
         return u
 
-    for _ in range(3):
+    for _ in range(1):
         env = MatrixEnv()
         if train:
             n_ep = 10000
             t_ev = 20
-            controller = NaiveController(env, [get_make_ppo_agent(32, 256), get_make_ppo_agent(32, 256)])
-            local_results, global_results = \
+            controller = NaiveController(env, [get_make_ppo_agent(1, 8), get_make_ppo_agent(1, 8)])
+            local_results, global_results, exp, _ = \
                 controller.train(max_steps=n_ep, policy_store_every=None, test_every=t_ev, test_max_steps=100)
-            eob = env.get_ob_encoders()[0](np.zeros(1))
-            for i in range(t_ev, n_ep, t_ev):
-                update_res(local_results[i // t_ev - 1], lres)
-                update_res(global_results[i // t_ev - 1], gres)
+            print(exp)
+            # eob = env.get_ob_encoders()[0](np.zeros(1))
+            # for i in range(t_ev, n_ep, t_ev):
+            #     update_res(local_results[i // t_ev - 1], lres)
+            #     update_res(global_results[i // t_ev - 1], gres)
 
                 # res["episode"].append(i)
                 # res["prob"].append(results[i // t_ev - 1][0][eob][0])

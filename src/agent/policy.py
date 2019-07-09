@@ -2,8 +2,9 @@ import random
 
 
 class Policy(object):
-    def __init__(self, act_fn):
+    def __init__(self, act_fn, prob_fn=None):
         self.act_fn = act_fn
+        self.prob_fn = prob_fn
 
     def act(self, obs):
         action = self.act_fn(obs)
@@ -15,6 +16,9 @@ class Policy(object):
             return action[0]
         else:
             return action
+
+    def prob(self, obs, ac):
+        return self.prob_fn(obs, ac)
 
 
 class MixedPolicy(Policy):

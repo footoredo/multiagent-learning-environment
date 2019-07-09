@@ -68,9 +68,10 @@ class NaiveController(BaseController):
             self.policies[i][-1] = policy
 
     def _train(self, max_steps=10000, policy_store_every=100, test_every=100,
-               show_every=None, test_max_steps=100, record_exploitability=False, train_steps=None, reset=False):
+               show_every=None, test_max_steps=100, record_exploitability=False, train_steps=None, reset=False,
+               sec_prob=False):
         if train_steps is None:
-            train_steps = [1 for _ in self.agents]
+            train_steps = [1 for _ in range(self.env.num_agents)]
         self.policy_store_every = policy_store_every
         # env = self.env if update_handler is None else MonitorEnv(self.env, update_handler)
         env = self.env
@@ -92,7 +93,7 @@ class NaiveController(BaseController):
         exploitability = []
 
         for self.step in range(max_steps):
-            if reset and self.step / max_steps > .1:
+            if reset and self.step / max_steps > .3:
                 self.statistics.reset()
                 print("RESET!")
                 reset = False
@@ -118,6 +119,8 @@ class NaiveController(BaseController):
                 self.show()
             for i, agent in enumerate(self.agents):
                 for _ in range(train_steps[i]):
+                    if sec_prob:
+                        env.update_attacker_policy(self.get_policy_with_version(self.policies[0], version="latest"))
                     agent.train(i, self.statistics, self.step / max_steps)
 
         if test_every is not None:

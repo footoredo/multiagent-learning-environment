@@ -133,12 +133,19 @@ class SecurityEnv(BaseEnv):
         self.atk_type = None
         self.type_ob = None
 
-        if seed is not None:
-            np.random.seed(seed)
-        self.atk_rew = np.random.rand(n_types, n_slots) * value_range
-        self.atk_pen = -np.random.rand(n_types, n_slots) * value_range
-        self.dfd_rew = np.random.rand(n_slots) * value_range
-        self.dfd_pen = -np.random.rand(n_slots) * value_range
+        if seed == "benchmark":
+            assert n_slots == 2 and n_rounds == 1 and n_types == 2
+            self.atk_rew = np.array([[2., 1.], [1., 2.]])
+            self.atk_pen = np.array([[-1., -1.], [-1., -1.]])
+            self.dfd_rew = np.array([1., 1.])
+            self.dfd_pen = np.array([-1., -1.])
+        else:
+            if seed is not None:
+                np.random.seed(seed)
+            self.atk_rew = np.random.rand(n_types, n_slots) * value_range
+            self.atk_pen = -np.random.rand(n_types, n_slots) * value_range
+            self.dfd_rew = np.random.rand(n_slots) * value_range
+            self.dfd_pen = -np.random.rand(n_slots) * value_range
 
         self.payoff = np.zeros((n_types, n_slots, n_slots, 2), dtype=np.float32)
         for t in range(n_types):

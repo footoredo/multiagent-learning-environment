@@ -277,6 +277,7 @@ class PPOAgent(BaseAgent):
             prevacs[i] = prevac
 
             ob, rew, _, new = env.step(ac)
+            # print(new)
             rews[i] = rew
 
             cur_ep_ret += rew
@@ -326,12 +327,13 @@ class PPOAgent(BaseAgent):
             # delete ass
 
         def act_fn(ob):
-            # ac, vpred = self.curpi.act_with_explore(stochastic=True, ob=ob, explore_prob=1e-2)
-            ac, ypred = self.curpi.act(stochastic=True, ob=ob)
-            # print(ac)
+            ac, _ = self.curpi.act(stochastic=True, ob=ob)
             return ac
 
-        return Policy(act_fn)
+        def prob_fn(ob, ac):
+            return self.curpi.prob(ob, ac)
+
+        return Policy(act_fn, prob_fn)
 
     def get_initial_policy(self):
         return self._get_policy()

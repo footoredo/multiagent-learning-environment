@@ -55,13 +55,25 @@ class MLPPolicy(object):
         stochastic = tf.placeholder(dtype=tf.bool, shape=())
         ac = U.switch(stochastic, self.pd.sample(), self.pd.mode())
         self._act = U.function([stochastic, ob], [ac, self.vpred])
+        # acq = tf.placeholder(dtype=tf.int32, shape=())
+        # prob = tf.nn.softmax(self.pd.logits)[acq]
+        # print(self.pd.logits)
+        # print(self.pd.mean)
+        prob = self.pd.mean
+        self._prob = U.function([ob], prob)
 
     def act(self, stochastic, ob):
         # print(ob)
         # print(self.scope, ob)
-        ac1, vpred1 =  self._act(stochastic, ob[None])
-        # print(ac1)
+        # print(ob, ob[None])
+        ac1, vpred1 = self._act(stochastic, ob[None])
+        # print(ac1, vpred1)
         return ac1[0], vpred1[0]
+
+    def prob(self, ob, ac):
+        # print(ob)
+        prob1 = self._prob(ob[None])
+        return prob1[0][ac]
 
     def act_with_explore(self, stochastic, ob, explore_prob):
         if np.random.rand() < explore_prob:
