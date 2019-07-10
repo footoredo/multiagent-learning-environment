@@ -134,9 +134,6 @@ class NaiveController(BaseController):
                 print("RESET!")
                 reset = False
             if check_every(test_every):
-                now_time = time.time()
-                print("\n### Step %d / %d" % (self.step, max_steps), now_time - last_time)
-                last_time = now_time
                 local_result, global_result = self.run_test(test_max_steps)
                 local_results.append(local_result)
                 global_results.append(global_result)
@@ -151,6 +148,10 @@ class NaiveController(BaseController):
                     assessments.append(assessment)
                     print("Current assessment:", assessment)
                     # self.run_benchmark()
+
+                now_time = time.time()
+                print("\n### Step %d / %d" % (self.step, max_steps), now_time - last_time)
+                last_time = now_time
 
             if check_every(show_every):
                 self.show()

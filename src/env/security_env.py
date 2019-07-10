@@ -167,8 +167,8 @@ class SecurityEnv(BaseEnv):
 
         # print(self.payoff[0, :, :, 0])
 
-        self.gambit_solver = GambitSolver(n_slots=n_slots, n_types=n_types, n_stages=n_rounds, payoff=self.payoff, prior=self.prior)
-        self.gambit_solver.generate()
+        # self.gambit_solver = GambitSolver(n_slots=n_slots, n_types=n_types, n_stages=n_rounds, payoff=self.payoff, prior=self.prior)
+        # self.gambit_solver.generate()
 
         self.attacker_strategy_exploiter = self._AttackerStrategyExploiter(self)
         self.defender_strategy_exploiter = self._DefenderStrategyExploiter(self)
@@ -325,18 +325,26 @@ class SecurityEnv(BaseEnv):
         print(atk_br)
         print(def_u)
 
-        atk_eps = 0.
+        atk_pbne_eps = 0.
         for t in range(self.n_types):
             for h, v in atk_u[t].items():
-                atk_eps = max(atk_eps, def_br[t][h] - v)
+                atk_pbne_eps = max(atk_pbne_eps, def_br[t][h] - v)
 
-        def_eps = 0.
+        def_pbne_eps = 0.
         for h, v in def_u.items():
-            def_eps = max(def_eps, atk_br[h] - v)
+            def_pbne_eps = max(def_pbne_eps, atk_br[h] - v)
+
+        print(atk_pbne_eps, def_pbne_eps)
+
+        atk_eps = 0.
+        for t in range(self.n_types):
+            atk_eps += self.prior[t] * (def_br[t]["[]"] - atk_u[t]["[]"])
+
+        def_eps = atk_br["[]"] - def_u["[]"]
 
         print(atk_eps, def_eps)
 
-        return [atk_eps, def_eps]
+        return [[atk_eps, atk_pbne_eps], [def_eps, def_pbne_eps]]
 
     def get_def_payoff(self, atk_ac, def_ac, prob):
         ret = 0.

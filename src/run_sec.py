@@ -35,7 +35,7 @@ seed = 5410
 # seed = "benchmark"
 n_slots = 2
 n_types = 2
-n_rounds = 2
+n_rounds = 10
 reset = False
 zero_sum = False
 learning_rate = 5e-6
@@ -133,12 +133,20 @@ if __name__ == "__main__":
                 print(assessments)
                 for i in range(test_every, max_steps, test_every):
                     res["episode"].append(i)
-                    res["assessment"].append(assessments[i // test_every - 1][0])
+                    res["assessment"].append(assessments[i // test_every - 1][0][0])
                     res["player"].append("attacker")
 
                     res["episode"].append(i)
-                    res["assessment"].append(assessments[i // test_every - 1][1])
+                    res["assessment"].append(assessments[i // test_every - 1][1][0])
                     res["player"].append("defender")
+
+                    res["episode"].append(i)
+                    res["assessment"].append(assessments[i // test_every - 1][0][1])
+                    res["player"].append("attacker PBNE")
+
+                    res["episode"].append(i)
+                    res["assessment"].append(assessments[i // test_every - 1][1][1])
+                    res["player"].append("defender PBNE")
             else:
                 lie_p = env.get_lie_prob()
                 print(p, lie_p)

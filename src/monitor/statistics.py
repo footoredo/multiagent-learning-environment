@@ -114,6 +114,7 @@ class Statistics(object):
             for eob, ob in self.ob_maps[i].items():
                 print(self.ob_namers[i](ob), end='\t')
                 print("pi: {0:.2%}".format(self.visit_count[i][eob] / self.tot_games), end='\t')
+                print("visit: {}".format(self.visit_count[i][eob]), end='\t')
                 print("avg_rew: {:+.3f}".format(self.get_avg_rew(i, ob)), end='\t')
                 freq = self.to_freq(self.stats[i][eob])
                 for j in range(self.n_acs[i]):
