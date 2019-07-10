@@ -44,7 +44,20 @@ schedule = ("wolf_adv", 20.0)
 train_steps = [1, 1]
 opponent = "latest"
 test_every = 10
-max_steps = 201
+max_steps = 10000
+
+result_folder = "../result/"
+exp_name = "_".join(["security",
+                     "seed:{}".format(seed),
+                     "{}-{}-{}".format(n_slots, n_types, n_rounds),
+                     "zs" if zero_sum else "gs",
+                     "reset" if reset else "no-reset",
+                     "{:.0e}".format(Decimal(learning_rate)),
+                     ":".join(list(map(str, schedule))),
+                     ":".join(list(map(str, train_steps))),
+                     opponent,
+                     "{}".format(test_every)])
+exp_dir = os.path.join(result_folder, exp_name)
 
 
 def get_make_ppo_agent(timesteps_per_actorbatch, max_episodes):
@@ -102,18 +115,7 @@ if __name__ == "__main__":
     #     T = 10
     #     for _ in range(T):
     res = {"episode": [], "exploitability": [], "player": []}
-    result_folder = "../result/"
-    exp_name = "_".join(["security",
-                         "seed:{}".format(seed),
-                         "{}-{}-{}".format(n_slots, n_types, n_rounds),
-                         "zs" if zero_sum else "gs",
-                         "reset" if reset else "no-reset",
-                         "{:.0e}".format(Decimal(learning_rate)),
-                         ":".join(list(map(str, schedule))),
-                         ":".join(list(map(str, train_steps))),
-                         opponent,
-                         "{}".format(test_every)])
-    exp_dir = os.path.join(result_folder, exp_name)
+
     for p in [.5]:
         for _ in range(1):
             env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=[p, 1. - p], n_rounds=n_rounds, zero_sum=zero_sum, seed=seed)
@@ -125,8 +127,8 @@ if __name__ == "__main__":
                 train_result = controller.train(max_steps=max_steps, policy_store_every=None,
                                                 test_every=test_every,  test_max_steps=100,
                                                 record_exploitability=True, train_steps=train_steps, reset=reset,
-                                                load_state=True, load_path=join_path(exp_dir, "step-100"))
-                                                # save_every=100, save_path=exp_dir)
+                                                load_state=True, load_path=join_path(exp_dir, "step-10000"),
+                                                save_every=1000, save_path=exp_dir)
                 exp = train_result["exploitability"]
                 print(exp)
                 for i in range(test_every, max_steps, test_every):

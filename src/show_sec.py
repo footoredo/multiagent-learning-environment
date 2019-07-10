@@ -1,7 +1,8 @@
-import pickle
+import joblib
 import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
+from common.path_utils import *
 
 
 def merge_exploitability(result):
@@ -17,13 +18,15 @@ def merge_exploitability(result):
         merged_result["episode"].append(result["episode"][i * 2])
         min0 = min(min0, result["exploitability"][i * 2])
         min1 = min(min1, result["exploitability"][i * 2 + 1])
-        merged_result["exploitability"].append((min0 + min1 - 12.85014436 - 2.75608594) / 2)
+        merged_result["exploitability"].append((min0 + min1 - 3.2052 - 1.1333) / 2)
     return merged_result
 
 
 if __name__ == "__main__":
     folder = "../result/"
-    res = pickle.load(open(folder + "security_seed:5410_2-2-8_gs_no-reset_5e-6_wolf_adv:20.0_1:1_latest_10-10000.obj", "rb"))
+    exp_name = "security_seed:5410_2-2-2_gs_no-reset_5e-6_wolf_adv:20.0_1:1_latest_10"
+    exp_dir = join_path(folder, exp_name)
+    res = joblib.load(join_path(exp_dir, "result.obj"))
     res = merge_exploitability(res)
     df = pd.DataFrame(data=res)
     sns.set()

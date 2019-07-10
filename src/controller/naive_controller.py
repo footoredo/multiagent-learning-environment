@@ -98,8 +98,6 @@ class NaiveController(BaseController):
             assert isinstance(agent, BaseAgent)
         self.agent_configs = [agent.get_config() for agent in self.agents]
 
-        last_time = time.time()
-
         self.statistics = Statistics(self.env) if test_every is not None else None
 
         exploitability = []
@@ -123,7 +121,16 @@ class NaiveController(BaseController):
         def check_every(every):
             return every is not None and self.step > 0 and self.step % every == 0
 
+        last_time = time.time()
         while self.step < max_steps:
+            for i, agent in enumerate(self.agents):
+                for _ in range(train_steps[i]):
+                    if sec_prob:
+                        env.update_attacker_policy(self.get_policy_with_version(self.policies[0], version="latest"))
+                    agent.train(i, self.statistics, self.step / max_steps)
+
+            self.step += 1
+
             if reset and self.step / max_steps > .3:
                 self.statistics.reset()
                 print("RESET!")
@@ -136,7 +143,7 @@ class NaiveController(BaseController):
                 local_results.append(local_result)
                 global_results.append(global_result)
                 if record_exploitability:
-                    rews = self.run_benchmark(1000)
+                    # rews = self.run_benchmark(1000)
                     exp = []
                     for i in range(self.num_agents):
                         exp.append(self.env.calc_exploitability(i, self.statistics.get_avg_strategy(i)))
@@ -152,17 +159,10 @@ class NaiveController(BaseController):
             if check_every(save_every):
                 self.save(join_path_and_check(save_path, "step-{}".format(self.step)))
 
-            for i, agent in enumerate(self.agents):
-                for _ in range(train_steps[i]):
-                    if sec_prob:
-                        env.update_attacker_policy(self.get_policy_with_version(self.policies[0], version="latest"))
-                    agent.train(i, self.statistics, self.step / max_steps)
-
-            self.step += 1
-
         if test_every is not None:
             self.statistics.show_statistics()
 
+        self.run_benchmark(1000000)
         return self.records
 
     def run_benchmark(self, max_steps=500):
@@ -179,7 +179,7 @@ class NaiveController(BaseController):
             if done:
                 benchmark_env.reset()
         avg_rews_per_player = statistics.get_avg_rews_per_player()
-        print(avg_rews_per_player)
+        statistics.show_statistics()
         return avg_rews_per_player
 
     @staticmethod
