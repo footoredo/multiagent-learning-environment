@@ -2,11 +2,11 @@ import numpy as np
 from env.base_env import BaseEnv
 from agent.policy import Policy
 import random
-import pickle
+import joblib
 
 
 class Statistics(object):
-    def __init__(self, env: BaseEnv, save_file=None):
+    def __init__(self, env: BaseEnv, keep_record=True, save_file=None):
         self.n_agents = env.num_agents
         self.ob_encoders = env.get_ob_encoders()
         self.ob_namers = env.get_ob_namers()
@@ -18,6 +18,10 @@ class Statistics(object):
         self.tot_games = None
         self.tot_steps = None
         self.sum_rews_per_player = None
+        self.path = None
+        self.visit_count = None
+        self.keep_record = keep_record
+        self.record = None
         if save_file is None:
             self.reset()
         else:
@@ -30,27 +34,29 @@ class Statistics(object):
         self.sum_rews_per_player = [0. for _ in range(self.n_agents)]
         self.tot_steps = 0
         self.tot_games = 0
+        self.path = [[] for _ in range(self.n_agents)]
+        self.visit_count = [{} for _ in range(self.n_agents)]
+        self.record = []
 
-    def save(self, file):
-        raise NotImplementedError
-        # if type(file) == str:
-        #     file = open(file, "wb")
-        # to_export = (self.ob_maps, self.stats, self.sum_rews, self.tot_steps)
-        # pickle.dump(to_export, file)
+    def save(self, save_path):
+        assert self.keep_record
+        joblib.dump(self.record, save_path)
 
-    def load(self, file):
-        raise NotImplementedError
-        # if type(file) == str:
-        #     file = open(file, "rb")
-        # self.ob_maps, self.stats, self.sum_rews, self.tot_steps = pickle.load(file)
+    def load(self, load_path):
+        record = joblib.load(load_path)
+        update_handler = self.get_update_handler()
+        for last_obs, start, actions, rews, done in record:
+            update_handler(last_obs, start, actions, rews, None, done, None)
 
     def get_update_handler(self):
         def update_handler(last_obs, start, actions, rews, infos, done, obs):
+            if self.keep_record:
+                self.record.append((last_obs, start, actions, rews, done))
             if start:
                 return
-            self.tot_steps += 1
             if done:
                 self.tot_games += 1
+            self.tot_steps += 1
             # print(actions, self.ac_encoders)
             eobs = [self.ob_encoders[i](ob) for i, ob in enumerate(last_obs)]
             eacs = [self.ac_encoders[i](ac) for i, ac in enumerate(actions)]
@@ -61,15 +67,21 @@ class Statistics(object):
                     # print(self.n_acs[i])
                     self.stats[i][eobs[i]] = np.zeros(shape=self.n_acs[i], dtype=np.int32)
                     self.sum_rews[i][eobs[i]] = 0.
+                    self.visit_count[i][eobs[i]] = 0
                 self.stats[i][eobs[i]][eacs[i]] += 1
-                self.sum_rews[i][eobs[i]] += rews[i]
+                self.path[i].append(eobs[i])
+                for eob in self.path[i]:
+                    self.sum_rews[i][eob] += rews[i]
+                self.visit_count[i][eobs[i]] += 1
+                if done:
+                    self.path[i] = []
         return update_handler
 
     def get_avg_rew(self, i, ob):
         eob = self.ob_encoders[i](ob)
         if eob not in self.sum_rews[i]:
             return -np.inf
-        return self.sum_rews[i][eob] / np.sum(self.stats[i][eob])
+        return self.sum_rews[i][eob] / self.visit_count[i][eob]
 
     def get_avg_policy(self, i):
         def act_fn(ob):
@@ -101,7 +113,7 @@ class Statistics(object):
             print("\nAgent {}".format(i))
             for eob, ob in self.ob_maps[i].items():
                 print(self.ob_namers[i](ob), end='\t')
-                print("pi: {0:.2%}".format(np.sum(self.stats[i][eob]) / self.tot_steps), end='\t')
+                print("pi: {0:.2%}".format(self.visit_count[i][eob] / self.tot_games), end='\t')
                 print("avg_rew: {:+.3f}".format(self.get_avg_rew(i, ob)), end='\t')
                 freq = self.to_freq(self.stats[i][eob])
                 for j in range(self.n_acs[i]):

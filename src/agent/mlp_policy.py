@@ -1,8 +1,8 @@
-from common.mpi_running_mean_std import RunningMeanStd
-import common.tf_util as U
+from baselines.common.mpi_running_mean_std import RunningMeanStd
+import baselines.common.tf_util as U
 import tensorflow as tf
 import gym
-from common.distributions import make_pdtype
+from baselines.common.distributions import make_pdtype
 import numpy as np
 
 

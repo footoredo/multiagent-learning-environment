@@ -38,3 +38,9 @@ class BaseAgent(ABC):
         :return: the config
         """
         pass
+
+    def save(self, save_path):
+        pass
+
+    def load(self, load_path):
+        pass

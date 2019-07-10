@@ -9,11 +9,11 @@ from agent.mlp_policy import MLPPolicy
 import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
-import logger
 import numpy as np
 import pickle
 from decimal import Decimal
-import random
+from common.path_utils import *
+import joblib
 
 
 def make_dummy_agent(observation_space, action_space, handlers):
@@ -35,7 +35,7 @@ seed = 5410
 # seed = "benchmark"
 n_slots = 2
 n_types = 2
-n_rounds = 8
+n_rounds = 2
 reset = False
 zero_sum = False
 learning_rate = 5e-6
@@ -44,7 +44,7 @@ schedule = ("wolf_adv", 20.0)
 train_steps = [1, 1]
 opponent = "latest"
 test_every = 10
-max_steps = 10000
+max_steps = 201
 
 
 def get_make_ppo_agent(timesteps_per_actorbatch, max_episodes):
@@ -102,6 +102,18 @@ if __name__ == "__main__":
     #     T = 10
     #     for _ in range(T):
     res = {"episode": [], "exploitability": [], "player": []}
+    result_folder = "../result/"
+    exp_name = "_".join(["security",
+                         "seed:{}".format(seed),
+                         "{}-{}-{}".format(n_slots, n_types, n_rounds),
+                         "zs" if zero_sum else "gs",
+                         "reset" if reset else "no-reset",
+                         "{:.0e}".format(Decimal(learning_rate)),
+                         ":".join(list(map(str, schedule))),
+                         ":".join(list(map(str, train_steps))),
+                         opponent,
+                         "{}".format(test_every)])
+    exp_dir = os.path.join(result_folder, exp_name)
     for p in [.5]:
         for _ in range(1):
             env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=[p, 1. - p], n_rounds=n_rounds, zero_sum=zero_sum, seed=seed)
@@ -110,11 +122,12 @@ if __name__ == "__main__":
             if train:
                 # test_every = 1
                 controller = NaiveController(env, [get_make_ppo_agent(8, 16), get_make_ppo_agent(8, 16)])
-                _, _, exp, avg_rews = controller.train(max_steps=max_steps, policy_store_every=None,
-                                                       test_every=test_every,  test_max_steps=100,
-                                                       record_exploitability=True, train_steps=train_steps,
-                                                       reset=reset)
-                print(np.array(avg_rews))
+                train_result = controller.train(max_steps=max_steps, policy_store_every=None,
+                                                test_every=test_every,  test_max_steps=100,
+                                                record_exploitability=True, train_steps=train_steps, reset=reset,
+                                                load_state=True, load_path=join_path(exp_dir, "step-100"))
+                                                # save_every=100, save_path=exp_dir)
+                exp = train_result["exploitability"]
                 print(exp)
                 for i in range(test_every, max_steps, test_every):
                     res["episode"].append(i)
@@ -133,20 +146,9 @@ if __name__ == "__main__":
         # res["p"].append(p)
         # res["lie_p"].append(s / T)
 
-    folder = "../result/"
-    exp_name = "_".join(["security",
-                         "seed:{}".format(seed),
-                         "{}-{}-{}".format(n_slots, n_types, n_rounds),
-                         "zs" if zero_sum else "gs",
-                         "reset" if reset else "no-reset",
-                         "{:.0e}".format(Decimal(learning_rate)),
-                         ":".join(list(map(str, schedule))),
-                         ":".join(list(map(str, train_steps))),
-                         opponent,
-                         "{}-{}".format(test_every, max_steps)])
-    pickle.dump(res, open(folder + exp_name + ".obj", "wb"))
+    joblib.dump(res, join_path_and_check(exp_dir, "result.obj"))
     df = pd.DataFrame(data=res)
     sns.set()
     sns.lineplot(x="episode", y="exploitability", hue="player", data=df)
-    plt.savefig(folder + exp_name + ".png")
+    plt.savefig(join_path_and_check(exp_dir, "result.png"))
     plt.show()

@@ -7,3 +7,4 @@ src/pull_from_c.sh
 screenlog*
 *.png
 result/*
+backup/*

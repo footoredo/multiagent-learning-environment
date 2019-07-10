@@ -2,15 +2,17 @@ import time
 from collections import deque
 
 from monitor.statistics import Statistics
-from common import zipsame
+from baselines.common import zipsame
 from agent.base_agent import BaseAgent
 from agent.policy import Policy
-import common.tf_util as U
-from common import Dataset
+import baselines.common.tf_util as U
+from baselines.common import Dataset
 import tensorflow as tf, numpy as np
-from common.mpi_adam import MpiAdam
-from common.mpi_moments import mpi_moments
+from baselines.common.mpi_adam import MpiAdam
+from baselines.common.mpi_moments import mpi_moments
 from mpi4py import MPI
+import json
+from common.path_utils import *
 
 
 class PPOAgent(BaseAgent):
@@ -21,6 +23,18 @@ class PPOAgent(BaseAgent):
             self._init(*args, **kwargs)
             self.scope = tf.get_variable_scope().name
             # print(self.scope)
+
+    def get_config(self):
+        return self.config
+
+    def save(self, save_path):
+        json.dump(self.config, open(join_path_and_check(save_path, "config.json"), "w"))
+        U.save_variables(join_path(save_path, "model.obj"),
+                         variables=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name))
+
+    def load(self, load_path):
+        U.load_variables(join_path(load_path, "model.obj"),
+                         variables=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name))
 
     def _init(self, policy_fn, ob_space, ac_space,
               handlers,
@@ -34,6 +48,22 @@ class PPOAgent(BaseAgent):
               schedule='constant',  # annealing for stepsize parameters (epsilon and adam)
               opponent='latest'  # opponent type
               ):
+        self.config = {
+            "timesteps_per_actorbatch": timesteps_per_actorbatch,
+            "clip_param": clip_param,
+            "entcoeff": entcoeff,
+            "optim_epochs": optim_epochs,
+            "optim_stepsize": optim_stepsize,
+            "gamma": gamma,
+            "lam": lam,
+            "max_timesteps": max_timesteps,
+            "max_episodes": max_episodes,
+            "max_iters": max_iters,
+            "max_seconds": max_seconds,
+            "adam_epsilon": adam_epsilon,
+            "schedule": schedule,
+            "opponent": opponent
+        }
         # print(ob_space)
         self.schedule = schedule
         self.policy_fn = policy_fn
@@ -344,8 +374,7 @@ class PPOAgent(BaseAgent):
     def train(self, *args, **kwargs):
         self.train_phase(*args, **kwargs)
 
-    def get_config(self):
-        return {}
+
 
 
 def flatten_lists(listoflists):

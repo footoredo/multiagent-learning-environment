@@ -8,6 +8,8 @@ from agent.policy import MixedPolicy
 import random
 import time
 import numpy as np
+import joblib
+from common.path_utils import *
 
 
 class NaiveController(BaseController):
@@ -18,6 +20,7 @@ class NaiveController(BaseController):
         self.policy_store_every = None
         self.test_cnt = np.zeros(shape=(2, 2), dtype=np.int32)
         self.statistics = None
+        self.records = None
 
     def get_push_handler(self, i):
         def push(policy):
@@ -67,16 +70,26 @@ class NaiveController(BaseController):
         else:
             self.policies[i][-1] = policy
 
+    def save(self, save_path):
+        for i, agent in enumerate(self.agents):
+            agent.save(join_path(save_path, "agent-{}".format(i)))
+        self.statistics.save(join_path_and_check(save_path, "statistics.obj"))
+        joblib.dump((self.step, self.records), join_path_and_check(save_path, "records.obj"))
+
+    def load(self, load_path):
+        for i, agent in enumerate(self.agents):
+            agent.load(join_path(load_path, "agent-{}".format(i)))
+        self.statistics.load(join_path(load_path, "statistics.obj"))
+        self.step, self.records = joblib.load(join_path(load_path, "records.obj"))
+
     def _train(self, max_steps=10000, policy_store_every=100, test_every=100,
                show_every=None, test_max_steps=100, record_exploitability=False, train_steps=None, reset=False,
-               sec_prob=False):
+               sec_prob=False, save_every=None, save_path=None, load_state=None, load_path=None):
         if train_steps is None:
             train_steps = [1 for _ in range(self.env.num_agents)]
         self.policy_store_every = policy_store_every
         # env = self.env if update_handler is None else MonitorEnv(self.env, update_handler)
         env = self.env
-        local_results = []
-        global_results = []
         self.agents = [agent_fn(observation_space=env.get_observation_space(i),
                                 action_space=env.get_action_space(i),
                                 handlers=self.get_handlers(i))
@@ -84,7 +97,6 @@ class NaiveController(BaseController):
         for agent in self.agents:
             assert isinstance(agent, BaseAgent)
         self.agent_configs = [agent.get_config() for agent in self.agents]
-        self.policies = [[agent.get_initial_policy()] for agent in self.agents]
 
         last_time = time.time()
 
@@ -92,13 +104,31 @@ class NaiveController(BaseController):
 
         exploitability = []
 
-        for self.step in range(max_steps):
+        self.records = {
+            "local_results": [],
+            "global_results": [],
+            "exploitability": []
+        }
+
+        self.step = 0
+
+        if load_state is not None:
+            self.load(load_path)
+
+        local_results = self.records["local_results"]
+        global_results = self.records["global_results"]
+        exploitability = self.records["exploitability"]
+        self.policies = [[agent.get_initial_policy()] for agent in self.agents]
+
+        def check_every(every):
+            return every is not None and self.step > 0 and self.step % every == 0
+
+        while self.step < max_steps:
             if reset and self.step / max_steps > .3:
                 self.statistics.reset()
                 print("RESET!")
                 reset = False
-            if test_every is not None and self.step % test_every == 0 and self.step > 0:
-            # if random.randrange(0, test_every) < 1:
+            if check_every(test_every):
                 now_time = time.time()
                 print("\n### Step %d / %d" % (self.step, max_steps), now_time - last_time)
                 last_time = now_time
@@ -116,18 +146,24 @@ class NaiveController(BaseController):
                     print("Current Exploitability:", exp)
                     # self.run_benchmark()
 
-            if show_every is not None and self.step % show_every == 0 and self.step > 0:
+            if check_every(show_every):
                 self.show()
+
+            if check_every(save_every):
+                self.save(join_path_and_check(save_path, "step-{}".format(self.step)))
+
             for i, agent in enumerate(self.agents):
                 for _ in range(train_steps[i]):
                     if sec_prob:
                         env.update_attacker_policy(self.get_policy_with_version(self.policies[0], version="latest"))
                     agent.train(i, self.statistics, self.step / max_steps)
 
+            self.step += 1
+
         if test_every is not None:
             self.statistics.show_statistics()
 
-        return local_results, global_results, exploitability, self.run_benchmark(100000)
+        return self.records
 
     def run_benchmark(self, max_steps=500):
         statistics = Statistics(self.env)

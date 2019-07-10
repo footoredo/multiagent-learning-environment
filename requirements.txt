@@ -1,3 +1,5 @@
+joblib
+baselines
 numpy
 mpi4py
 tensorflow
