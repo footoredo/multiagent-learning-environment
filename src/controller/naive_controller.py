@@ -83,7 +83,7 @@ class NaiveController(BaseController):
         self.step, self.records = joblib.load(join_path(load_path, "records.obj"))
 
     def _train(self, max_steps=10000, policy_store_every=100, test_every=100,
-               show_every=None, test_max_steps=100, record_exploitability=False, train_steps=None, reset=False,
+               show_every=None, test_max_steps=100, record_assessment=False, train_steps=None, reset=False,
                sec_prob=False, save_every=None, save_path=None, load_state=None, load_path=None):
         if train_steps is None:
             train_steps = [1 for _ in range(self.env.num_agents)]
@@ -100,22 +100,20 @@ class NaiveController(BaseController):
 
         self.statistics = Statistics(self.env) if test_every is not None else None
 
-        exploitability = []
-
         self.records = {
             "local_results": [],
             "global_results": [],
-            "exploitability": []
+            "assessments": []
         }
 
         self.step = 0
 
-        if load_state is not None:
+        if load_state:
             self.load(load_path)
 
         local_results = self.records["local_results"]
         global_results = self.records["global_results"]
-        exploitability = self.records["exploitability"]
+        assessments = self.records["assessments"]
         self.policies = [[agent.get_initial_policy()] for agent in self.agents]
 
         def check_every(every):
@@ -142,15 +140,16 @@ class NaiveController(BaseController):
                 local_result, global_result = self.run_test(test_max_steps)
                 local_results.append(local_result)
                 global_results.append(global_result)
-                if record_exploitability:
+                if record_assessment:
                     # rews = self.run_benchmark(1000)
-                    exp = []
-                    for i in range(self.num_agents):
-                        exp.append(self.env.calc_exploitability(i, self.statistics.get_avg_strategy(i)))
+                    assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
+                                                             for i in range(self.num_agents)])
+                    # for i in range(self.num_agents):
+                    #     assessment.append(self.env.assess_strategy(i, self.statistics.get_avg_strategy(i)))
                     # exp[0] += 0.633
                     # exp[1] += 2.387
-                    exploitability.append(exp)
-                    print("Current Exploitability:", exp)
+                    assessments.append(assessment)
+                    print("Current assessment:", assessment)
                     # self.run_benchmark()
 
             if check_every(show_every):
@@ -162,7 +161,7 @@ class NaiveController(BaseController):
         if test_every is not None:
             self.statistics.show_statistics()
 
-        self.run_benchmark(1000000)
+        # self.run_benchmark(10000)
         return self.records
 
     def run_benchmark(self, max_steps=500):

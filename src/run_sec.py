@@ -114,7 +114,7 @@ if __name__ == "__main__":
     #     s = 0.
     #     T = 10
     #     for _ in range(T):
-    res = {"episode": [], "exploitability": [], "player": []}
+    res = {"episode": [], "assessment": [], "player": []}
 
     for p in [.5]:
         for _ in range(1):
@@ -126,18 +126,18 @@ if __name__ == "__main__":
                 controller = NaiveController(env, [get_make_ppo_agent(8, 16), get_make_ppo_agent(8, 16)])
                 train_result = controller.train(max_steps=max_steps, policy_store_every=None,
                                                 test_every=test_every,  test_max_steps=100,
-                                                record_exploitability=True, train_steps=train_steps, reset=reset,
-                                                load_state=True, load_path=join_path(exp_dir, "step-10000"),
+                                                record_assessment=True, train_steps=train_steps, reset=reset,
+                                                load_state=False, load_path=join_path(exp_dir, "step-10"),
                                                 save_every=1000, save_path=exp_dir)
-                exp = train_result["exploitability"]
-                print(exp)
+                assessments = train_result["assessments"]
+                print(assessments)
                 for i in range(test_every, max_steps, test_every):
                     res["episode"].append(i)
-                    res["exploitability"].append(exp[i // test_every - 1][0])
+                    res["assessment"].append(assessments[i // test_every - 1][0])
                     res["player"].append("attacker")
 
                     res["episode"].append(i)
-                    res["exploitability"].append(exp[i // test_every - 1][1])
+                    res["assessment"].append(assessments[i // test_every - 1][1])
                     res["player"].append("defender")
             else:
                 lie_p = env.get_lie_prob()
@@ -151,6 +151,6 @@ if __name__ == "__main__":
     joblib.dump(res, join_path_and_check(exp_dir, "result.obj"))
     df = pd.DataFrame(data=res)
     sns.set()
-    sns.lineplot(x="episode", y="exploitability", hue="player", data=df)
+    sns.lineplot(x="episode", y="assessment", hue="player", data=df)
     plt.savefig(join_path_and_check(exp_dir, "result.png"))
     plt.show()

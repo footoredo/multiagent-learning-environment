@@ -170,8 +170,10 @@ class SecurityEnv(BaseEnv):
         self.gambit_solver = GambitSolver(n_slots=n_slots, n_types=n_types, n_stages=n_rounds, payoff=self.payoff, prior=self.prior)
         self.gambit_solver.generate()
 
-        self.attacker_exploitability_calculator = self._AttackerExploitabilityCalculator(self)
-        self.defender_exploitability_calculator = self._DefenderExploitabilityCalculator(self)
+        self.attacker_strategy_exploiter = self._AttackerStrategyExploiter(self)
+        self.defender_strategy_exploiter = self._DefenderStrategyExploiter(self)
+        self.attacker_utility_calculator = self._AttackerUtilityCalculator(self)
+        self.defender_utility_calculator = self._DefenderUtilityCalculator(self)
 
     def export_settings(self, filename):
         pickle.dump((self.n_slots, self.n_types, self.prior, self.n_rounds, self.zero_sum, self.seed, self.record_def),
@@ -311,19 +313,95 @@ class SecurityEnv(BaseEnv):
 
         return self._get_ob(), [atk_rew, dfd_rew], [self.atk_type, self.atk_type], self.rounds_so_far >= self.n_rounds
 
-    def calc_exploitability(self, i, strategy):
-        if i == 0:
-            return self._calc_attacker_exploitability(strategy)
+    def assess_strategies(self, strategies):
+        attacker_strategy, defender_strategy = strategies
+        atk_br = self.attacker_strategy_exploiter.run(attacker_strategy)
+        def_br = self.defender_strategy_exploiter.run(defender_strategy)
+        atk_u = self.attacker_utility_calculator.run(attacker_strategy, defender_strategy)
+        def_u = self.defender_utility_calculator.run(attacker_strategy, defender_strategy)
+
+        print(def_br)
+        print(atk_u)
+        print(atk_br)
+        print(def_u)
+
+        atk_eps = 0.
+        for t in range(self.n_types):
+            for h, v in atk_u[t].items():
+                atk_eps = max(atk_eps, def_br[t][h] - v)
+
+        def_eps = 0.
+        for h, v in def_u.items():
+            def_eps = max(def_eps, atk_br[h] - v)
+
+        print(atk_eps, def_eps)
+
+        return [atk_eps, def_eps]
+
+    def get_def_payoff(self, atk_ac, def_ac, prob):
+        ret = 0.
+        for t in range(self.n_types):
+            ret += prob[t] * self.payoff[t, atk_ac, def_ac, 1]
+        return ret
+
+    def get_atk_payoff(self, t, atk_ac, def_ac):
+        return self.payoff[t, atk_ac, def_ac, 0]
+
+    def _convert_to_type_ob(self, t):
+        ob = np.zeros(shape=self.n_slots)
+        ob[t] = 1.0
+        return ob
+
+    def convert_to_atk_ob(self, history, t):
+        if self.record_def:
+            ob = np.zeros(shape=(self.n_rounds - 1, 2, self.n_slots + 1))
         else:
-            return self._calc_defender_exploitability(strategy)
+            ob = np.zeros(shape=(self.n_rounds - 1, self.n_slots + 1))
+        r = len(history)
+        # print(r)
+        for i in range(r):
+            if self.record_def:
+                ob[i][0][history[i][0]] = 1.0
+                ob[i][1][history[i][1]] = 1.0
+            else:
+                ob[i][history[i]] = 1.0
 
-    def _calc_attacker_exploitability(self, attacker_strategy):
-        return self.attacker_exploitability_calculator.run(attacker_strategy)
+        for i in range(r, self.n_rounds - 1):
+            if self.record_def:
+                ob[i][0][self.n_slots] = 1.0
+                ob[i][1][self.n_slots] = 1.0
+            else:
+                ob[i][self.n_slots] = 1.0
+        ob = np.concatenate([self._convert_to_type_ob(t), ob.reshape(-1)])
+        return ob
 
-    def _calc_defender_exploitability(self, defender_strategy):
-        return self.defender_exploitability_calculator.run(defender_strategy)
+    def convert_to_def_ob(self, history):
+        if self.record_def:
+            ob = np.zeros(shape=(self.n_rounds - 1, 2, self.n_slots + 1))
+        else:
+            ob = np.zeros(shape=(self.n_rounds - 1, self.n_slots + 1))
+        r = len(history)
+        # print(r)
+        for i in range(r):
+            if self.record_def:
+                ob[i][0][history[i][0]] = 1.0
+                ob[i][1][history[i][1]] = 1.0
+            else:
+                ob[i][history[i]] = 1.0
 
-    class _AttackerExploitabilityCalculator(object):
+        for i in range(r, self.n_rounds - 1):
+            if self.record_def:
+                ob[i][0][self.n_slots] = 1.0
+                ob[i][1][self.n_slots] = 1.0
+            else:
+                ob[i][self.n_slots] = 1.0
+        ob = np.concatenate([[0.], ob.reshape(-1)])
+        return ob
+
+    # def assess_strategies(self, strategies):
+    #     return self.strategies_assessment.run(strategies[0], strategies[1])
+
+    class _AttackerStrategyExploiter(object):
         def __init__(self, env):
             self.cache = None
             self.strategy = None
@@ -334,52 +412,15 @@ class SecurityEnv(BaseEnv):
             self.payoff = env.payoff
             self.record_def = env.record_def
 
-        def _get_def_payoff(self, atk_ac, def_ac, prob):
-            ret = 0.
-            for t in range(self.n_types):
-                ret += prob[t] * self.payoff[t, atk_ac, def_ac, 1]
-            return ret
-
-        def _get_atk_payoff(self, atk_ac, def_ac, prob):
-            ret = 0.
-            for t in range(self.n_types):
-                ret += prob[t] * self.payoff[t, atk_ac, def_ac, 0]
-            return ret
+            self._get_def_payoff = env.get_def_payoff
+            self._convert_to_atk_ob = env.convert_to_atk_ob
 
         def _reset(self):
             self.cache = dict()
 
-        def _convert_to_type_ob(self, t):
-            ob = np.zeros(shape=self.n_slots)
-            ob[t] = 1.0
-            return ob
-
-        def _convert_to_atk_ob(self, history, t):
-            if self.record_def:
-                ob = np.zeros(shape=(self.n_rounds - 1, 2, self.n_slots + 1))
-            else:
-                ob = np.zeros(shape=(self.n_rounds - 1, self.n_slots + 1))
-            r = len(history)
-            # print(r)
-            for i in range(r):
-                if self.record_def:
-                    ob[i][0][history[i][0]] = 1.0
-                    ob[i][1][history[i][1]] = 1.0
-                else:
-                    ob[i][history[i]] = 1.0
-
-            for i in range(r, self.n_rounds - 1):
-                if self.record_def:
-                    ob[i][0][self.n_slots] = 1.0
-                    ob[i][1][self.n_slots] = 1.0
-                else:
-                    ob[i][self.n_slots] = 1.0
-            ob = np.concatenate([self._convert_to_type_ob(t), ob.reshape(-1)])
-            return ob
-
         def _recursive(self, history, prior):
             if len(history) >= self.n_rounds:
-                return 0.0, 0.0
+                return 0.0
             if str(history) in self.cache:
                 return self.cache[str(history)]
             else:
@@ -391,10 +432,8 @@ class SecurityEnv(BaseEnv):
                         atk_strategy_type[i][t] += atk_strategy[i] * prior[t]
 
                 max_ret = -1e100
-                max_ret_me = None
                 for def_ac in range(self.n_slots):
                     ret = 0.
-                    ret_me = 0.
                     for atk_ac in range(self.n_slots):
                         p = np.sum(atk_strategy_type[atk_ac])
                         prob = atk_strategy_type[atk_ac] / p
@@ -404,24 +443,21 @@ class SecurityEnv(BaseEnv):
                             next_history = history + [[atk_ac, def_ac]]
                         else:
                             next_history = history + [atk_ac]
-                        tmp, tmp_me = self._recursive(next_history, prob)
+                        tmp = self._recursive(next_history, prob)
                         r = self._get_def_payoff(atk_ac, def_ac, prob) + tmp
-                        r_me = self._get_atk_payoff(atk_ac, def_ac, prob) + tmp_me
                         ret += r * p
-                        ret_me += r_me * p
                     if ret > max_ret:
                         max_ret = ret
-                        max_ret_me = ret_me
-                self.cache[str(history)] = (max_ret, max_ret_me)
-                return max_ret, max_ret_me
+                self.cache[str(history)] = max_ret
+                return max_ret
 
         def run(self, attacker_strategy):
             self._reset()
             self.strategy = attacker_strategy
-            ret, _ = self._recursive([], self.prior)
-            return ret
+            self._recursive([], self.prior)
+            return self.cache
 
-    class _DefenderExploitabilityCalculator(object):
+    class _DefenderStrategyExploiter(object):
         def __init__(self, env):
             self.cache = None
             self.strategy = None
@@ -432,41 +468,15 @@ class SecurityEnv(BaseEnv):
             self.payoff = env.payoff
             self.record_def = env.record_def
 
-        def _get_atk_payoff(self, t, atk_ac, def_ac):
-            return self.payoff[t, atk_ac, def_ac, 0]
-
-        def _get_dfd_payoff(self, t, atk_ac, def_ac):
-            return self.payoff[t, atk_ac, def_ac, 1]
+            self._get_atk_payoff = env.get_atk_payoff
+            self._convert_to_def_ob = env.convert_to_def_ob
 
         def _reset(self):
             self.cache = dict()
 
-        def _convert_to_def_ob(self, history):
-            if self.record_def:
-                ob = np.zeros(shape=(self.n_rounds - 1, 2, self.n_slots + 1))
-            else:
-                ob = np.zeros(shape=(self.n_rounds - 1, self.n_slots + 1))
-            r = len(history)
-            # print(r)
-            for i in range(r):
-                if self.record_def:
-                    ob[i][0][history[i][0]] = 1.0
-                    ob[i][1][history[i][1]] = 1.0
-                else:
-                    ob[i][history[i]] = 1.0
-
-            for i in range(r, self.n_rounds - 1):
-                if self.record_def:
-                    ob[i][0][self.n_slots] = 1.0
-                    ob[i][1][self.n_slots] = 1.0
-                else:
-                    ob[i][self.n_slots] = 1.0
-            ob = np.concatenate([[0.], ob.reshape(-1)])
-            return ob
-
         def _recursive(self, history, t):
             if len(history) >= self.n_rounds:
-                return 0.0, 0.0
+                return 0.0
             if str(history) in self.cache:
                 return self.cache[str(history)]
             else:
@@ -474,34 +484,145 @@ class SecurityEnv(BaseEnv):
                 def_strategy = self.strategy(def_ob)
 
                 max_ret = -1e100
-                max_ret_me = None
                 for atk_ac in range(self.n_slots):
                     ret = 0.
-                    ret_me = 0.
                     for def_ac in range(self.n_slots):
                         p = def_strategy[def_ac]
                         if self.record_def:
                             next_history = history + [[atk_ac, def_ac]]
                         else:
                             next_history = history + [atk_ac]
-                        tmp, tmp_me = self._recursive(next_history, t)
+                        tmp = self._recursive(next_history, t)
                         r = self._get_atk_payoff(t, atk_ac, def_ac) + tmp
-                        r_me = self._get_dfd_payoff(t, atk_ac, def_ac) + tmp_me
                         ret += r * p
-                        ret_me += r_me * p
                     if ret > max_ret:
                         max_ret = ret
-                        max_ret_me = ret_me
-                self.cache[str(history)] = (max_ret, max_ret_me)
-                return max_ret, max_ret_me
+                self.cache[str(history)] = max_ret
+                return max_ret
 
         def run(self, defender_strategy):
             self.strategy = defender_strategy
-            ret = 0.
+            ret = []
             for t in range(self.n_types):
                 self._reset()
-                v, _ = self._recursive([], t)
-                ret += self.prior[t] * v
+                self._recursive([], t)
+                ret.append(deepcopy(self.cache))
+            return ret
+
+    class _DefenderUtilityCalculator(object):
+        def __init__(self, env):
+            self.cache = None
+            self.attacker_strategy = None
+            self.defender_strategy = None
+            self.n_slots = env.n_slots
+            self.n_types = env.n_types
+            self.n_rounds = env.n_rounds
+            self.prior = env.prior
+            self.payoff = env.payoff
+            self.record_def = env.record_def
+
+            self._get_def_payoff = env.get_def_payoff
+            self._convert_to_atk_ob = env.convert_to_atk_ob
+            self._convert_to_def_ob = env.convert_to_def_ob
+
+        def _reset(self):
+            self.cache = dict()
+
+        def _recursive(self, history, prior):
+            if len(history) >= self.n_rounds:
+                return 0.0
+            if str(history) in self.cache:
+                return self.cache[str(history)]
+            else:
+                atk_strategy_type = np.zeros(shape=(self.n_slots, self.n_types))
+
+                for t in range(self.n_types):
+                    atk_ob = self._convert_to_atk_ob(history, t)
+                    atk_strategy = self.attacker_strategy(atk_ob)
+                    for i in range(self.n_slots):
+                        atk_strategy_type[i][t] += atk_strategy[i] * prior[t]
+
+                utility = 0.0
+                def_ob = self._convert_to_def_ob(history)
+                def_strategy = self.defender_strategy(def_ob)
+                for def_ac in range(self.n_slots):
+                    p_def = def_strategy[def_ac]
+                    for atk_ac in range(self.n_slots):
+                        p_atk = np.sum(atk_strategy_type[atk_ac])
+                        if p_atk < 1e-5:
+                            continue
+                        p_type = atk_strategy_type[atk_ac] / p_atk
+                        if self.record_def:
+                            next_history = history + [[atk_ac, def_ac]]
+                        else:
+                            next_history = history + [atk_ac]
+                        tmp = self._recursive(next_history, p_type)
+                        r = self._get_def_payoff(atk_ac, def_ac, p_type) + tmp
+                        utility += r * p_def * p_atk
+                self.cache[str(history)] = utility
+                return utility
+
+        def run(self, attacker_strategy, defender_strategy):
+            self._reset()
+            self.attacker_strategy = attacker_strategy
+            self.defender_strategy = defender_strategy
+            self._recursive([], self.prior)
+            return self.cache
+
+    class _AttackerUtilityCalculator(object):
+        def __init__(self, env):
+            self.cache = None
+            self.attacker_strategy = None
+            self.defender_strategy = None
+            self.n_slots = env.n_slots
+            self.n_types = env.n_types
+            self.n_rounds = env.n_rounds
+            self.prior = env.prior
+            self.payoff = env.payoff
+            self.record_def = env.record_def
+
+            self._get_atk_payoff = env.get_atk_payoff
+            self._convert_to_atk_ob = env.convert_to_atk_ob
+            self._convert_to_def_ob = env.convert_to_def_ob
+
+        def _reset(self):
+            self.cache = dict()
+
+        def _recursive(self, history, t):
+            if len(history) >= self.n_rounds:
+                return 0.0
+            if str(history) in self.cache:
+                return self.cache[str(history)]
+            else:
+                utility = 0.0
+                atk_ob = self._convert_to_atk_ob(history, t)
+                atk_strategy = self.attacker_strategy(atk_ob)
+                def_ob = self._convert_to_def_ob(history)
+                def_strategy = self.defender_strategy(def_ob)
+                for def_ac in range(self.n_slots):
+                    p_def = def_strategy[def_ac]
+                    for atk_ac in range(self.n_slots):
+                        p_atk = atk_strategy[atk_ac]
+                        if self.record_def:
+                            next_history = history + [[atk_ac, def_ac]]
+                        else:
+                            next_history = history + [atk_ac]
+                        tmp = self._recursive(next_history, t)
+                        r = self._get_atk_payoff(t, atk_ac, def_ac) + tmp
+                        utility += r * p_def * p_atk
+                self.cache[str(history)] = utility
+                return utility
+
+        def run(self, attacker_strategy, defender_strategy):
+            self.attacker_strategy = attacker_strategy
+            self.defender_strategy = defender_strategy
+
+            ret = []
+            for t in range(self.n_types):
+                self._reset()
+                self._recursive([], t)
+                ret.append(deepcopy(self.cache))
+
             return ret
 
 
