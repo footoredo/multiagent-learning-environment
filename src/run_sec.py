@@ -33,13 +33,13 @@ ppo_agent_cnt = 0
 # seed = random.randrange(10000)
 seed = 5410
 # seed = "benchmark"
-n_slots = 3
+n_slots = 2
 n_types = 2
-n_rounds = 2
+n_rounds = 8
 reset = False
 zero_sum = False
 learning_rate = 5e-6
-schedule = ("wolf2", 20.0)
+schedule = ("wolf_adv", 20.0)
 # schedule = "constant"
 train_steps = [1, 1]
 opponent = "latest"
@@ -109,12 +109,12 @@ if __name__ == "__main__":
             env.export_settings("../result/setting.pkl")
             if train:
                 # test_every = 1
-                controller = NaiveController(env, [get_make_ppo_agent(1, 8), get_make_ppo_agent(1, 8)])
+                controller = NaiveController(env, [get_make_ppo_agent(8, 16), get_make_ppo_agent(8, 16)])
                 _, _, exp, avg_rews = controller.train(max_steps=max_steps, policy_store_every=None,
                                                        test_every=test_every,  test_max_steps=100,
                                                        record_exploitability=True, train_steps=train_steps,
                                                        reset=reset)
-                print(np.array(avg_rews) * n_rounds)
+                print(np.array(avg_rews))
                 print(exp)
                 for i in range(test_every, max_steps, test_every):
                     res["episode"].append(i)

@@ -29,10 +29,14 @@ def make_self_play_agent(observation_space, action_space, handlers):
 
 ppo_agent_cnt = 0
 
-lr_schedule = "constant"
-init_lr = 5e-4 * 4
-opponent = "average"
-experiment_name = "_".join([lr_schedule, "{:.0e}".format(Decimal(init_lr)), opponent])
+lr_schedule = ("wolf_adv", 20.0)
+init_lr = 5e-6
+opponent = "latest"
+experiment_name = "_".join(["matrix",
+                            ":".join(list(map(str, lr_schedule))),
+                            "{:.0e}".format(Decimal(init_lr)),
+                            opponent
+                            ])
 
 
 def get_make_ppo_agent(timesteps_per_actorbatch, max_episodes):
@@ -137,7 +141,8 @@ if __name__ == "__main__":
             t_ev = 20
             controller = NaiveController(env, [get_make_ppo_agent(1, 8), get_make_ppo_agent(1, 8)])
             local_results, global_results, exp, _ = \
-                controller.train(max_steps=n_ep, policy_store_every=None, test_every=t_ev, test_max_steps=100)
+                controller.train(max_steps=n_ep, policy_store_every=None, test_every=t_ev, test_max_steps=100,
+                                 record_exploitability=True)
             print(exp)
             # eob = env.get_ob_encoders()[0](np.zeros(1))
             # for i in range(t_ev, n_ep, t_ev):

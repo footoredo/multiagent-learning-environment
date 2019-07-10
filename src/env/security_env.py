@@ -109,7 +109,7 @@ class GambitSolver:
 
 
 class SecurityEnv(BaseEnv):
-    def __init__(self, n_slots, n_types, prior, n_rounds, value_range=10., zero_sum=False, seed=None):
+    def __init__(self, n_slots, n_types, prior, n_rounds, value_range=10., zero_sum=False, seed=None, record_def=False):
         self.n_slots = n_slots
         self.n_types = n_types
         self.prior = prior if prior is not None else np.random.rand(n_types)
@@ -117,8 +117,9 @@ class SecurityEnv(BaseEnv):
         self.n_rounds = n_rounds
         self.zero_sum = zero_sum
         self.seed = seed
+        self.record_def = record_def
 
-        self.ob_shape = (n_rounds - 1, 2, n_slots + 1)
+        self.ob_shape = (n_rounds - 1, 2, n_slots + 1) if record_def else (n_rounds - 1, n_slots + 1)
         self.ob_len = np.prod(self.ob_shape)
         atk_ob_space = spaces.Box(low=0., high=1., shape=[n_types + self.ob_len])
         dfd_ob_space = spaces.Box(low=0., high=1., shape=[1 + self.ob_len])
@@ -173,7 +174,7 @@ class SecurityEnv(BaseEnv):
         self.defender_exploitability_calculator = self._DefenderExploitabilityCalculator(self)
 
     def export_settings(self, filename):
-        pickle.dump((self.n_slots, self.n_types, self.prior, self.n_rounds, self.zero_sum, self.seed),
+        pickle.dump((self.n_slots, self.n_types, self.prior, self.n_rounds, self.zero_sum, self.seed, self.record_def),
                     open(filename, "wb"))
 
     def export_payoff(self, filename):
@@ -228,20 +229,31 @@ class SecurityEnv(BaseEnv):
 
     def get_ob_namers(self):
         def get_history_name(ob):
-            if ob.shape[0] > 0:
-                if ob[self.n_slots] < .5:
-                    ac0 = self.n_slots
-                    for i in range(self.n_slots):
-                        if ob[i] > .5:
-                            ac0 = i
-                            break
-                    ac1 = self.n_slots
-                    for i in range(self.n_slots):
-                        if ob[i + self.n_slots + 1] > .5:
-                            ac1 = i
-                            break
-                    return ":({},{})".format(ac0, ac1) + get_history_name(ob[2 * (self.n_slots + 1):])
-            return ""
+            if self.record_def:
+                if ob.shape[0] > 0:
+                    if ob[self.n_slots] < .5:
+                        ac0 = self.n_slots
+                        for i in range(self.n_slots):
+                            if ob[i] > .5:
+                                ac0 = i
+                                break
+                        ac1 = self.n_slots
+                        for i in range(self.n_slots):
+                            if ob[i + self.n_slots + 1] > .5:
+                                ac1 = i
+                                break
+                        return ":({},{})".format(ac0, ac1) + get_history_name(ob[2 * (self.n_slots + 1):])
+                return ""
+            else:
+                if ob.shape[0] > 0:
+                    if ob[self.n_slots] < .5:
+                        ac0 = self.n_slots
+                        for i in range(self.n_slots):
+                            if ob[i] > .5:
+                                ac0 = i
+                                break
+                        return ":{}".format(ac0) + get_history_name(ob[(self.n_slots + 1):])
+                return ""
 
         def atk_ob_namer(ob):
             name = ""
@@ -259,9 +271,13 @@ class SecurityEnv(BaseEnv):
     def reset(self, debug=False):
         self.rounds_so_far = 0
         self.ac_history = np.zeros(shape=self.ob_shape, dtype=np.float32)
-        for r in range(self.n_rounds - 1):
-            for p in range(2):
-                self.ac_history[r][p][self.n_slots] = 1.
+        if self.record_def:
+            for r in range(self.n_rounds - 1):
+                for p in range(2):
+                    self.ac_history[r][p][self.n_slots] = 1.
+        else:
+            for r in range(self.n_rounds - 1):
+                self.ac_history[r][self.n_slots] = 1.
         self.atk_type = np.random.choice(self.n_types, p=self.prior)
         self.type_ob = np.zeros(shape=self.n_types, dtype=np.float32)
         self.type_ob[self.atk_type] = 1.
@@ -282,10 +298,14 @@ class SecurityEnv(BaseEnv):
         dfd_rew = self.payoff[self.atk_type, actions[0], actions[1], 1]
 
         if self.rounds_so_far < self.n_rounds - 1:
-            self.ac_history[self.rounds_so_far][0][self.n_slots] = 0.
-            self.ac_history[self.rounds_so_far][0][actions[0]] = 1.
-            self.ac_history[self.rounds_so_far][1][self.n_slots] = 0.
-            self.ac_history[self.rounds_so_far][1][actions[1]] = 1.
+            if self.record_def:
+                self.ac_history[self.rounds_so_far][0][self.n_slots] = 0.
+                self.ac_history[self.rounds_so_far][0][actions[0]] = 1.
+                self.ac_history[self.rounds_so_far][1][self.n_slots] = 0.
+                self.ac_history[self.rounds_so_far][1][actions[1]] = 1.
+            else:
+                self.ac_history[self.rounds_so_far][self.n_slots] = 0.
+                self.ac_history[self.rounds_so_far][actions[0]] = 1.
 
         self.rounds_so_far += 1
 
@@ -312,11 +332,18 @@ class SecurityEnv(BaseEnv):
             self.n_rounds = env.n_rounds
             self.prior = env.prior
             self.payoff = env.payoff
+            self.record_def = env.record_def
 
         def _get_def_payoff(self, atk_ac, def_ac, prob):
             ret = 0.
             for t in range(self.n_types):
                 ret += prob[t] * self.payoff[t, atk_ac, def_ac, 1]
+            return ret
+
+        def _get_atk_payoff(self, atk_ac, def_ac, prob):
+            ret = 0.
+            for t in range(self.n_types):
+                ret += prob[t] * self.payoff[t, atk_ac, def_ac, 0]
             return ret
 
         def _reset(self):
@@ -328,21 +355,31 @@ class SecurityEnv(BaseEnv):
             return ob
 
         def _convert_to_atk_ob(self, history, t):
-            ob = np.zeros(shape=(self.n_rounds - 1, 2, self.n_slots + 1))
+            if self.record_def:
+                ob = np.zeros(shape=(self.n_rounds - 1, 2, self.n_slots + 1))
+            else:
+                ob = np.zeros(shape=(self.n_rounds - 1, self.n_slots + 1))
             r = len(history)
             # print(r)
             for i in range(r):
-                ob[i][0][history[i][0]] = 1.0
-                ob[i][1][history[i][1]] = 1.0
+                if self.record_def:
+                    ob[i][0][history[i][0]] = 1.0
+                    ob[i][1][history[i][1]] = 1.0
+                else:
+                    ob[i][history[i]] = 1.0
+
             for i in range(r, self.n_rounds - 1):
-                ob[i][0][self.n_slots] = 1.0
-                ob[i][1][self.n_slots] = 1.0
+                if self.record_def:
+                    ob[i][0][self.n_slots] = 1.0
+                    ob[i][1][self.n_slots] = 1.0
+                else:
+                    ob[i][self.n_slots] = 1.0
             ob = np.concatenate([self._convert_to_type_ob(t), ob.reshape(-1)])
             return ob
 
         def _recursive(self, history, prior):
             if len(history) >= self.n_rounds:
-                return 0.0
+                return 0.0, 0.0
             if str(history) in self.cache:
                 return self.cache[str(history)]
             else:
@@ -354,24 +391,35 @@ class SecurityEnv(BaseEnv):
                         atk_strategy_type[i][t] += atk_strategy[i] * prior[t]
 
                 max_ret = -1e100
+                max_ret_me = None
                 for def_ac in range(self.n_slots):
                     ret = 0.
+                    ret_me = 0.
                     for atk_ac in range(self.n_slots):
                         p = np.sum(atk_strategy_type[atk_ac])
                         prob = atk_strategy_type[atk_ac] / p
                         if p < 1e-5:
                             continue
-                        r = self._get_def_payoff(atk_ac, def_ac, prob) + \
-                            self._recursive(history + [[atk_ac, def_ac]], prob)
+                        if self.record_def:
+                            next_history = history + [[atk_ac, def_ac]]
+                        else:
+                            next_history = history + [atk_ac]
+                        tmp, tmp_me = self._recursive(next_history, prob)
+                        r = self._get_def_payoff(atk_ac, def_ac, prob) + tmp
+                        r_me = self._get_atk_payoff(atk_ac, def_ac, prob) + tmp_me
                         ret += r * p
-                    max_ret = max(max_ret, ret)
-                self.cache[str(history)] = max_ret
-                return max_ret
+                        ret_me += r_me * p
+                    if ret > max_ret:
+                        max_ret = ret
+                        max_ret_me = ret_me
+                self.cache[str(history)] = (max_ret, max_ret_me)
+                return max_ret, max_ret_me
 
         def run(self, attacker_strategy):
             self._reset()
             self.strategy = attacker_strategy
-            return self._recursive([], self.prior)
+            ret, _ = self._recursive([], self.prior)
+            return ret
 
     class _DefenderExploitabilityCalculator(object):
         def __init__(self, env):
@@ -382,29 +430,43 @@ class SecurityEnv(BaseEnv):
             self.n_rounds = env.n_rounds
             self.prior = env.prior
             self.payoff = env.payoff
+            self.record_def = env.record_def
 
         def _get_atk_payoff(self, t, atk_ac, def_ac):
             return self.payoff[t, atk_ac, def_ac, 0]
+
+        def _get_dfd_payoff(self, t, atk_ac, def_ac):
+            return self.payoff[t, atk_ac, def_ac, 1]
 
         def _reset(self):
             self.cache = dict()
 
         def _convert_to_def_ob(self, history):
-            ob = np.zeros(shape=(self.n_rounds - 1, 2, self.n_slots + 1))
+            if self.record_def:
+                ob = np.zeros(shape=(self.n_rounds - 1, 2, self.n_slots + 1))
+            else:
+                ob = np.zeros(shape=(self.n_rounds - 1, self.n_slots + 1))
             r = len(history)
             # print(r)
             for i in range(r):
-                ob[i][0][history[i][0]] = 1.0
-                ob[i][1][history[i][1]] = 1.0
+                if self.record_def:
+                    ob[i][0][history[i][0]] = 1.0
+                    ob[i][1][history[i][1]] = 1.0
+                else:
+                    ob[i][history[i]] = 1.0
+
             for i in range(r, self.n_rounds - 1):
-                ob[i][0][self.n_slots] = 1.0
-                ob[i][1][self.n_slots] = 1.0
+                if self.record_def:
+                    ob[i][0][self.n_slots] = 1.0
+                    ob[i][1][self.n_slots] = 1.0
+                else:
+                    ob[i][self.n_slots] = 1.0
             ob = np.concatenate([[0.], ob.reshape(-1)])
             return ob
 
         def _recursive(self, history, t):
             if len(history) >= self.n_rounds:
-                return 0.0
+                return 0.0, 0.0
             if str(history) in self.cache:
                 return self.cache[str(history)]
             else:
@@ -412,27 +474,38 @@ class SecurityEnv(BaseEnv):
                 def_strategy = self.strategy(def_ob)
 
                 max_ret = -1e100
+                max_ret_me = None
                 for atk_ac in range(self.n_slots):
                     ret = 0.
+                    ret_me = 0.
                     for def_ac in range(self.n_slots):
                         p = def_strategy[def_ac]
-                        r = self._get_atk_payoff(t, atk_ac, def_ac) + \
-                            self._recursive(history + [[atk_ac, def_ac]], t)
+                        if self.record_def:
+                            next_history = history + [[atk_ac, def_ac]]
+                        else:
+                            next_history = history + [atk_ac]
+                        tmp, tmp_me = self._recursive(next_history, t)
+                        r = self._get_atk_payoff(t, atk_ac, def_ac) + tmp
+                        r_me = self._get_dfd_payoff(t, atk_ac, def_ac) + tmp_me
                         ret += r * p
-                    max_ret = max(max_ret, ret)
-                self.cache[str(history)] = max_ret
-                return max_ret
+                        ret_me += r_me * p
+                    if ret > max_ret:
+                        max_ret = ret
+                        max_ret_me = ret_me
+                self.cache[str(history)] = (max_ret, max_ret_me)
+                return max_ret, max_ret_me
 
         def run(self, defender_strategy):
             self.strategy = defender_strategy
             ret = 0.
             for t in range(self.n_types):
                 self._reset()
-                v = self._recursive([], t)
+                v, _ = self._recursive([], t)
                 ret += self.prior[t] * v
             return ret
 
 
 def import_security_env(filename):
-    n_slots, n_types, prior, n_rounds, zero_sum, seed = pickle.load(open(filename, "rb"))
-    return SecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum, seed=seed)
+    n_slots, n_types, prior, n_rounds, zero_sum, seed, record_def = pickle.load(open(filename, "rb"))
+    return SecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum, seed=seed,
+                       record_def=record_def)

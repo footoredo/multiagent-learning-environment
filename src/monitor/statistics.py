@@ -15,6 +15,7 @@ class Statistics(object):
         self.ob_maps = None
         self.stats = None
         self.sum_rews = None
+        self.tot_games = None
         self.tot_steps = None
         self.sum_rews_per_player = None
         if save_file is None:
@@ -28,6 +29,7 @@ class Statistics(object):
         self.sum_rews = [{} for _ in range(self.n_agents)]
         self.sum_rews_per_player = [0. for _ in range(self.n_agents)]
         self.tot_steps = 0
+        self.tot_games = 0
 
     def save(self, file):
         raise NotImplementedError
@@ -47,6 +49,8 @@ class Statistics(object):
             if start:
                 return
             self.tot_steps += 1
+            if done:
+                self.tot_games += 1
             # print(actions, self.ac_encoders)
             eobs = [self.ob_encoders[i](ob) for i, ob in enumerate(last_obs)]
             eacs = [self.ac_encoders[i](ac) for i, ac in enumerate(actions)]
@@ -114,4 +118,4 @@ class Statistics(object):
         return result
 
     def get_avg_rews_per_player(self):
-        return np.array(self.sum_rews_per_player) / self.tot_steps
+        return np.array(self.sum_rews_per_player) / self.tot_games

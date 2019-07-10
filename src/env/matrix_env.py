@@ -12,7 +12,8 @@ class MatrixEnv(BaseEnv):
         # self.payoff = [[[-1., -1.], [-3., 0.]], [[0., -3.], [-2., -2.]]]
 
         self.zero_sum = True
-        self.payoff = np.array([[0., -2., 4], [-7., 1., 0], [-2, 3, 3]])
+        # self.payoff = np.array([[1., 3., 2], [0., 5., 1], [3, 0, 2]])
+        self.payoff = np.array([[2, 3, 4], [5, -1, -7]])
 
         self.na = list(self.payoff.shape)
 
