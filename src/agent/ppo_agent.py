@@ -286,8 +286,8 @@ class PPOAgent(BaseAgent):
 
         while True:
             prevac = ac
-            ac, vpred = pi.act(stochastic, ob)
-            # ac, vpred = pi.act_with_explore(stochastic, ob, .1)
+            # ac, vpred = pi.act(stochastic, ob)
+            ac, vpred = pi.act_with_explore(stochastic, ob, .1)
             # Slight weirdness here because we need value function at time T
             # before returning segment [0, T-1] so we get the correct
             # terminal value
@@ -357,7 +357,8 @@ class PPOAgent(BaseAgent):
             # delete ass
 
         def act_fn(ob):
-            ac, _ = self.curpi.act(stochastic=True, ob=ob)
+            # ac, _ = self.curpi.act(stochastic=True, ob=ob)
+            ac, _ = self.curpi.act_with_explore(stochastic=True, ob=ob, explore_prob=.1)
             return ac
 
         def prob_fn(ob, ac):

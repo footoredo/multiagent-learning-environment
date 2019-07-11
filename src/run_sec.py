@@ -44,7 +44,8 @@ schedule = ("wolf_adv", 20.0)
 train_steps = [1, 1]
 opponent = "latest"
 test_every = 10
-max_steps = 10000
+max_steps = 7000
+other = "experimenting"
 
 result_folder = "../result/"
 exp_name = "_".join(["security",
@@ -56,6 +57,7 @@ exp_name = "_".join(["security",
                      ":".join(list(map(str, schedule))),
                      ":".join(list(map(str, train_steps))),
                      opponent,
+                     other,
                      "{}".format(test_every)])
 exp_dir = os.path.join(result_folder, exp_name)
 
@@ -125,9 +127,9 @@ if __name__ == "__main__":
                 # test_every = 1
                 controller = NaiveController(env, [get_make_ppo_agent(8, 16), get_make_ppo_agent(8, 16)])
                 train_result = controller.train(max_steps=max_steps, policy_store_every=None,
-                                                test_every=test_every,  test_max_steps=100,
+                                                test_every=test_every,  test_max_steps=1000,
                                                 record_assessment=True, train_steps=train_steps, reset=reset,
-                                                load_state=False, load_path=join_path(exp_dir, "step-10"),
+                                                load_state=True, load_path=join_path(exp_dir, "step-7000"),
                                                 save_every=1000, save_path=exp_dir)
                 assessments = train_result["assessments"]
                 print(assessments)
