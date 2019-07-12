@@ -46,7 +46,8 @@ class PPOAgent(BaseAgent):
               callback=None,  # you can do anything in the callback, since it takes locals(), globals()
               adam_epsilon=1e-5,
               schedule='constant',  # annealing for stepsize parameters (epsilon and adam)
-              opponent='latest'  # opponent type
+              opponent='latest',  # opponent type
+              exploration=None
               ):
         self.config = {
             "timesteps_per_actorbatch": timesteps_per_actorbatch,
@@ -70,6 +71,7 @@ class PPOAgent(BaseAgent):
         self.ob_space = ob_space
         self.ac_space = ac_space
         self.push, self.pull = handlers
+        self.exploration = exploration
         pi = policy_fn("pi", self.name, ob_space, ac_space)  # Construct network for new policy
         oldpi = policy_fn("oldpi", self.name, ob_space, ac_space)  # Network for old policy
         atarg = tf.placeholder(dtype=tf.float32, shape=[None])  # Target advantage function (if applicable)
@@ -286,8 +288,13 @@ class PPOAgent(BaseAgent):
 
         while True:
             prevac = ac
-            # ac, vpred = pi.act(stochastic, ob)
-            ac, vpred = pi.act_with_explore(stochastic, ob, .1)
+            if type(self.exploration) == float:
+                ac, vpred = pi.act_with_explore(stochastic, ob, self.exploration)
+            elif self.exploration is None:
+                ac, vpred = pi.act(stochastic, ob)
+            else:
+                raise NotImplementedError
+
             # Slight weirdness here because we need value function at time T
             # before returning segment [0, T-1] so we get the correct
             # terminal value
@@ -357,8 +364,12 @@ class PPOAgent(BaseAgent):
             # delete ass
 
         def act_fn(ob):
-            # ac, _ = self.curpi.act(stochastic=True, ob=ob)
-            ac, _ = self.curpi.act_with_explore(stochastic=True, ob=ob, explore_prob=.1)
+            if type(self.exploration) == float:
+                ac, _ = self.curpi.act_with_explore(stochastic, ob, self.exploration)
+            elif self.exploration is None:
+                ac, _ = self.curpi.act(stochastic, ob)
+            else:
+                raise NotImplementedError
             return ac
 
         def prob_fn(ob, ac):
