@@ -35,7 +35,7 @@ seed = 5410
 # seed = "benchmark"
 n_slots = 2
 n_types = 2
-n_rounds = 10
+n_rounds = 5
 reset = False
 zero_sum = False
 learning_rate = 5e-6
@@ -44,8 +44,8 @@ schedule = ("wolf_adv", 20.0)
 train_steps = [1, 1]
 opponent = "latest"
 test_every = 10
-max_steps = 7000
-other = "experimenting"
+max_steps = 10000
+other = "explore"
 
 result_folder = "../result/"
 exp_name = "_".join(["security",
@@ -129,7 +129,7 @@ if __name__ == "__main__":
                 train_result = controller.train(max_steps=max_steps, policy_store_every=None,
                                                 test_every=test_every,  test_max_steps=1000,
                                                 record_assessment=True, train_steps=train_steps, reset=reset,
-                                                load_state=True, load_path=join_path(exp_dir, "step-7000"),
+                                                load_state=False, load_path=join_path(exp_dir, "step-7000"),
                                                 save_every=1000, save_path=exp_dir)
                 assessments = train_result["assessments"]
                 print(assessments)
