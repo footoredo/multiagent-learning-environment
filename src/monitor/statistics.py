@@ -40,7 +40,7 @@ class Statistics(object):
 
     def save(self, save_path):
         assert self.keep_record
-        joblib.dump(self.record, save_path)
+        joblib.dump(self.record, save_path, compress=3)
 
     def load(self, load_path):
         record = joblib.load(load_path)

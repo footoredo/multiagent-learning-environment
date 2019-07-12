@@ -74,7 +74,7 @@ class NaiveController(BaseController):
         for i, agent in enumerate(self.agents):
             agent.save(join_path(save_path, "agent-{}".format(i)))
         self.statistics.save(join_path_and_check(save_path, "statistics.obj"))
-        joblib.dump((self.step, self.records), join_path_and_check(save_path, "records.obj"))
+        joblib.dump((self.step, self.records), join_path_and_check(save_path, "records.obj"), compress=3)
 
     def load(self, load_path):
         for i, agent in enumerate(self.agents):
@@ -84,7 +84,7 @@ class NaiveController(BaseController):
 
     def _train(self, max_steps=10000, policy_store_every=100, test_every=100,
                show_every=None, test_max_steps=100, record_assessment=False, train_steps=None, reset=False,
-               sec_prob=False, save_every=None, save_path=None, load_state=None, load_path=None):
+               sec_prob=False, save_every=None, save_path=None, load_state=None, load_path=None, store_results=False):
         if train_steps is None:
             train_steps = [1 for _ in range(self.env.num_agents)]
         self.policy_store_every = policy_store_every
@@ -135,8 +135,9 @@ class NaiveController(BaseController):
                 reset = False
             if check_every(test_every):
                 local_result, global_result = self.run_test(test_max_steps)
-                local_results.append(local_result)
-                global_results.append(global_result)
+                if store_results:
+                    local_results.append(local_result)
+                    global_results.append(global_result)
                 if record_assessment:
                     # rews = self.run_benchmark(1000)
                     assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
