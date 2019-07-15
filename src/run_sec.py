@@ -33,10 +33,10 @@ ppo_agent_cnt = 0
 # seed = random.randrange(10000)
 seed = 5410
 # seed = "benchmark"
-n_slots = 2
-n_types = 3
-n_rounds = 5
-prior = [.3, .3, .4]
+n_slots = 3
+n_types = 2
+n_rounds = 2
+prior = [.5, .5]
 reset = False
 zero_sum = False
 learning_rate = 5e-6
@@ -46,20 +46,20 @@ train_steps = [1, 1]
 opponent = "latest"
 test_every = 10
 max_steps = 10000
-other = "explore"
+other = "1000-test-steps"
 
 result_folder = "../result/"
 exp_name = "_".join(["security",
                      "seed:{}".format(seed),
-                     "{}-{}-{}-{}".format(n_slots, n_types, n_rounds, ":".join(map(str, prior))),
+                     "game:{}-{}-{}-{}".format(n_slots, n_types, n_rounds, ":".join(map(str, prior))),
                      "zs" if zero_sum else "gs",
                      "reset" if reset else "no-reset",
                      "{:.0e}".format(Decimal(learning_rate)),
                      ":".join(list(map(str, schedule))),
-                     ":".join(list(map(str, train_steps))),
+                     # ":".join(list(map(str, train_steps))),
                      opponent,
-                     other,
-                     "{}".format(test_every)])
+                     "every:{}".format(test_every),
+                     other])
 exp_dir = os.path.join(result_folder, exp_name)
 
 
@@ -151,14 +151,16 @@ if __name__ == "__main__":
                     res["assessment"].append(assessments[i // test_every - 1][1][1])
                     res["player"].append("defender PBNE")
             else:
-                lie_p = env.get_lie_prob()
-                print(p, lie_p)
-                s += lie_p
+                pass
+                # lie_p = env.get_lie_prob()
+                # print(p, lie_p)
+                # s += lie_p
                 # res["p"].append(p)
                 # res["lie_p"].append(lie_p)
         # res["p"].append(p)
         # res["lie_p"].append(s / T)
 
+    print(exp_name)
     joblib.dump(res, join_path_and_check(exp_dir, "result.obj"))
     df = pd.DataFrame(data=res)
     sns.set()
