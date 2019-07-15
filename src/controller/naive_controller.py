@@ -163,6 +163,11 @@ class NaiveController(BaseController):
         if test_every is not None:
             self.statistics.show_statistics()
 
+        if record_assessment:
+            final_assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
+                                                           for i in range(self.num_agents)], verbose=True)
+            self.records["final_assessment"] = final_assessment
+
         # self.run_benchmark(10000)
         return self.records
 

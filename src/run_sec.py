@@ -1,4 +1,3 @@
-from env.matrix_env import MatrixEnv
 from env.security_env import SecurityEnv
 from controller.naive_controller import NaiveController
 from agent.dummy_agent import DummyAgent
@@ -45,21 +44,21 @@ train_steps = [1, 1]
 opponent = "latest"
 test_every = 10
 max_steps = 10000
-other = "explore"
+other = "1-8"
 
 result_folder = "../result/"
 exp_name = "_".join(["security",
                      "seed:{}".format(seed),
-                     "{}-{}-{}".format(n_slots, n_types, n_rounds),
+                     "game:{}-{}-{}".format(n_slots, n_types, n_rounds),
                      "zs" if zero_sum else "gs",
                      "reset" if reset else "no-reset",
-                     "{:.0e}".format(Decimal(learning_rate)),
+                     "lr:{:.0e}".format(Decimal(learning_rate)),
                      ":".join(list(map(str, schedule))),
-                     ":".join(list(map(str, train_steps))),
+                     # ":".join(list(map(str, train_steps))),
                      opponent,
-                     other,
-                     "{}".format(test_every)])
-exp_dir = os.path.join(result_folder, exp_name)
+                     "every:{}".format(test_every),
+                     other])
+exp_dir = join_path_and_check(result_folder, exp_name)
 
 
 def get_make_ppo_agent(timesteps_per_actorbatch, max_episodes):
@@ -122,15 +121,17 @@ if __name__ == "__main__":
         for _ in range(1):
             env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=[p, 1. - p], n_rounds=n_rounds, zero_sum=zero_sum, seed=seed)
             env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
-            env.export_settings("../result/setting.pkl")
+            env.export_settings(join_path_and_check(exp_dir, "env_settings.obj"))
+            print("export settings done")
             if train:
                 # test_every = 1
-                controller = NaiveController(env, [get_make_ppo_agent(8, 16), get_make_ppo_agent(8, 16)])
+                controller = NaiveController(env, [get_make_ppo_agent(1, 8), get_make_ppo_agent(1, 8)])
                 train_result = controller.train(max_steps=max_steps, policy_store_every=None,
                                                 test_every=test_every,  test_max_steps=1000,
                                                 record_assessment=True, train_steps=train_steps, reset=reset,
-                                                load_state=False, load_path=join_path(exp_dir, "step-7000"),
+                                                load_state=False, load_path=join_path(exp_dir, "step-10000"),
                                                 save_every=1000, save_path=exp_dir)
+                joblib.dump(train_result["final_assessment"], join_path_and_check(exp_dir, "final_assessment.obj"))
                 assessments = train_result["assessments"]
                 print(assessments)
                 for i in range(test_every, max_steps, test_every):
@@ -150,9 +151,10 @@ if __name__ == "__main__":
                     res["assessment"].append(assessments[i // test_every - 1][1][1])
                     res["player"].append("defender PBNE")
             else:
-                lie_p = env.get_lie_prob()
-                print(p, lie_p)
-                s += lie_p
+                pass
+                # lie_p = env.get_lie_prob()
+                # print(p, lie_p)
+                # s += lie_p
                 # res["p"].append(p)
                 # res["lie_p"].append(lie_p)
         # res["p"].append(p)

@@ -5,7 +5,10 @@ import numpy as np
 import subprocess
 from copy import deepcopy
 import csv
-import pickle
+import joblib
+import seaborn as sns
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
 class GambitSolver:
@@ -176,8 +179,8 @@ class SecurityEnv(BaseEnv):
         self.defender_utility_calculator = self._DefenderUtilityCalculator(self)
 
     def export_settings(self, filename):
-        pickle.dump((self.n_slots, self.n_types, self.prior, self.n_rounds, self.zero_sum, self.seed, self.record_def),
-                    open(filename, "wb"))
+        joblib.dump((self.n_slots, self.n_types, self.prior, self.n_rounds, self.zero_sum, self.seed, self.record_def),
+                    filename)
 
     def export_payoff(self, filename):
         with open(filename, "w", newline='') as csvfile:
@@ -194,27 +197,27 @@ class SecurityEnv(BaseEnv):
                     data.append(self.atk_pen[t, i])
                 writer.writerow(data)
 
-    def get_lie_prob(self):
-        # p00, p01, p10, p11 = self.gambit_solver.solve()
-        # v0 = self.payoff[0, 0, 0, 0] * p10 + self.payoff[0, 0, 1, 0] * p11
-        # v1 = self.payoff[0, 1, 0, 0] * p10 + self.payoff[0, 1, 1, 0] * p11
-        # if np.isclose(v0, v1):
-        #     return 0.
-        # if v0 > v1:
-        #     return p01
-        # else:
-        #     return p10
-
-        self.gambit_solver.solve()
-        p0 = self.gambit_solver.get_profile(0, [0])
-        p1 = self.gambit_solver.get_profile(0, [])
-        v = np.zeros(shape=self.n_slots, dtype=np.float32)
-        for i in range(self.n_slots):
-            for j in range(self.n_slots):
-                v[i] += p1[j] * self.payoff[0, i, j, 0]
-
-        optim = np.argmax(v)
-        return 1. - p0[optim]
+    # def get_lie_prob(self):
+    #     # p00, p01, p10, p11 = self.gambit_solver.solve()
+    #     # v0 = self.payoff[0, 0, 0, 0] * p10 + self.payoff[0, 0, 1, 0] * p11
+    #     # v1 = self.payoff[0, 1, 0, 0] * p10 + self.payoff[0, 1, 1, 0] * p11
+    #     # if np.isclose(v0, v1):
+    #     #     return 0.
+    #     # if v0 > v1:
+    #     #     return p01
+    #     # else:
+    #     #     return p10
+    #
+    #     self.gambit_solver.solve()
+    #     p0 = self.gambit_solver.get_profile(0, [0])
+    #     p1 = self.gambit_solver.get_profile(0, [])
+    #     v = np.zeros(shape=self.n_slots, dtype=np.float32)
+    #     for i in range(self.n_slots):
+    #         for j in range(self.n_slots):
+    #             v[i] += p1[j] * self.payoff[0, i, j, 0]
+    #
+    #     optim = np.argmax(v)
+    #     return 1. - p0[optim]
 
     def _get_base_ob(self):
         return self.ac_history.reshape(-1)
@@ -313,38 +316,65 @@ class SecurityEnv(BaseEnv):
 
         return self._get_ob(), [atk_rew, dfd_rew], [self.atk_type, self.atk_type], self.rounds_so_far >= self.n_rounds
 
-    def assess_strategies(self, strategies):
+    def encode_history(self, history):
+        if self.record_def:
+            raise NotImplementedError
+        b = self.n_slots + 1
+        ret = 0
+        for a in history:
+            ret = ret * b + a + 1
+        return ret
+
+    def decode_history(self, encoded_history):
+        history = []
+        b = self.n_slots + 1
+        while encoded_history > 0:
+            history.append(encoded_history % b - 1)
+            encoded_history //= b
+        return list(reversed(history))
+
+    def assess_strategies(self, strategies, verbose=False):
         attacker_strategy, defender_strategy = strategies
         atk_br = self.attacker_strategy_exploiter.run(attacker_strategy)
         def_br = self.defender_strategy_exploiter.run(defender_strategy)
         atk_u = self.attacker_utility_calculator.run(attacker_strategy, defender_strategy)
         def_u = self.defender_utility_calculator.run(attacker_strategy, defender_strategy)
 
-        print(def_br)
-        print(atk_u)
-        print(atk_br)
-        print(def_u)
+        # print(def_br)
+        # print(atk_u)
+        # print(atk_br)
+        # print(def_u)
+
+        atk_result = []
 
         atk_pbne_eps = 0.
         for t in range(self.n_types):
             for h, v in atk_u[t].items():
                 atk_pbne_eps = max(atk_pbne_eps, def_br[t][h] - v)
+                atk_result.append(([t] + self.decode_history(h), def_br[t][h] - v))
+
+        def_result = []
 
         def_pbne_eps = 0.
         for h, v in def_u.items():
             def_pbne_eps = max(def_pbne_eps, atk_br[h] - v)
+            def_result.append((self.decode_history(h), atk_br[h] - v))
 
-        print(atk_pbne_eps, def_pbne_eps)
+        print("PBNE:", atk_pbne_eps, def_pbne_eps)
 
         atk_eps = 0.
+        initial_state = self.encode_history([])
         for t in range(self.n_types):
-            atk_eps += self.prior[t] * (def_br[t]["[]"] - atk_u[t]["[]"])
+            atk_eps += self.prior[t] * (def_br[t][initial_state] - atk_u[t][initial_state])
 
-        def_eps = atk_br["[]"] - def_u["[]"]
+        def_eps = atk_br[initial_state] - def_u[initial_state]
 
-        print(atk_eps, def_eps)
+        print("Overall:", atk_eps, def_eps)
 
-        return [[atk_eps, atk_pbne_eps], [def_eps, def_pbne_eps]]
+        if verbose:
+            return [atk_result, def_result]
+        else:
+            return [[atk_eps, atk_pbne_eps], [def_eps, def_pbne_eps]]
 
     def get_def_payoff(self, atk_ac, def_ac, prob):
         ret = 0.
@@ -422,15 +452,17 @@ class SecurityEnv(BaseEnv):
 
             self._get_def_payoff = env.get_def_payoff
             self._convert_to_atk_ob = env.convert_to_atk_ob
+            self._encode_history = env.encode_history
 
         def _reset(self):
             self.cache = dict()
 
         def _recursive(self, history, prior):
+            encoded = self._encode_history(history)
             if len(history) >= self.n_rounds:
                 return 0.0
-            if str(history) in self.cache:
-                return self.cache[str(history)]
+            if encoded in self.cache:
+                return self.cache[encoded]
             else:
                 atk_strategy_type = np.zeros(shape=(self.n_slots, self.n_types))
                 for t in range(self.n_types):
@@ -456,7 +488,7 @@ class SecurityEnv(BaseEnv):
                         ret += r * p
                     if ret > max_ret:
                         max_ret = ret
-                self.cache[str(history)] = max_ret
+                self.cache[encoded] = max_ret
                 return max_ret
 
         def run(self, attacker_strategy):
@@ -478,15 +510,17 @@ class SecurityEnv(BaseEnv):
 
             self._get_atk_payoff = env.get_atk_payoff
             self._convert_to_def_ob = env.convert_to_def_ob
+            self._encode_history = env.encode_history
 
         def _reset(self):
             self.cache = dict()
 
         def _recursive(self, history, t):
+            encoded = self._encode_history(history)
             if len(history) >= self.n_rounds:
                 return 0.0
-            if str(history) in self.cache:
-                return self.cache[str(history)]
+            if encoded in self.cache:
+                return self.cache[encoded]
             else:
                 def_ob = self._convert_to_def_ob(history)
                 def_strategy = self.strategy(def_ob)
@@ -505,7 +539,7 @@ class SecurityEnv(BaseEnv):
                         ret += r * p
                     if ret > max_ret:
                         max_ret = ret
-                self.cache[str(history)] = max_ret
+                self.cache[encoded] = max_ret
                 return max_ret
 
         def run(self, defender_strategy):
@@ -532,15 +566,17 @@ class SecurityEnv(BaseEnv):
             self._get_def_payoff = env.get_def_payoff
             self._convert_to_atk_ob = env.convert_to_atk_ob
             self._convert_to_def_ob = env.convert_to_def_ob
+            self._encode_history = env.encode_history
 
         def _reset(self):
             self.cache = dict()
 
         def _recursive(self, history, prior):
+            encoded = self._encode_history(history)
             if len(history) >= self.n_rounds:
                 return 0.0
-            if str(history) in self.cache:
-                return self.cache[str(history)]
+            if encoded in self.cache:
+                return self.cache[encoded]
             else:
                 atk_strategy_type = np.zeros(shape=(self.n_slots, self.n_types))
 
@@ -567,7 +603,7 @@ class SecurityEnv(BaseEnv):
                         tmp = self._recursive(next_history, p_type)
                         r = self._get_def_payoff(atk_ac, def_ac, p_type) + tmp
                         utility += r * p_def * p_atk
-                self.cache[str(history)] = utility
+                self.cache[encoded] = utility
                 return utility
 
         def run(self, attacker_strategy, defender_strategy):
@@ -580,6 +616,7 @@ class SecurityEnv(BaseEnv):
     class _AttackerUtilityCalculator(object):
         def __init__(self, env):
             self.cache = None
+            self.freq = None
             self.attacker_strategy = None
             self.defender_strategy = None
             self.n_slots = env.n_slots
@@ -592,15 +629,18 @@ class SecurityEnv(BaseEnv):
             self._get_atk_payoff = env.get_atk_payoff
             self._convert_to_atk_ob = env.convert_to_atk_ob
             self._convert_to_def_ob = env.convert_to_def_ob
+            self._encode_history = env.encode_history
 
         def _reset(self):
             self.cache = dict()
+            self.freq = dict()
 
         def _recursive(self, history, t):
+            encoded = self._encode_history(history)
             if len(history) >= self.n_rounds:
                 return 0.0
-            if str(history) in self.cache:
-                return self.cache[str(history)]
+            if encoded in self.cache:
+                return self.cache[encoded]
             else:
                 utility = 0.0
                 atk_ob = self._convert_to_atk_ob(history, t)
@@ -618,7 +658,7 @@ class SecurityEnv(BaseEnv):
                         tmp = self._recursive(next_history, t)
                         r = self._get_atk_payoff(t, atk_ac, def_ac) + tmp
                         utility += r * p_def * p_atk
-                self.cache[str(history)] = utility
+                self.cache[encoded] = utility
                 return utility
 
         def run(self, attacker_strategy, defender_strategy):
@@ -635,6 +675,6 @@ class SecurityEnv(BaseEnv):
 
 
 def import_security_env(filename):
-    n_slots, n_types, prior, n_rounds, zero_sum, seed, record_def = pickle.load(open(filename, "rb"))
+    n_slots, n_types, prior, n_rounds, zero_sum, seed, record_def = joblib.load(filename)
     return SecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum, seed=seed,
                        record_def=record_def)

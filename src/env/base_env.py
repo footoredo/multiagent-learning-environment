@@ -39,11 +39,11 @@ class BaseEnv(ABC):
     # def assess_strategy(self, i, strategy):
     #     raise NotImplementedError
 
-    def assess_strategies(self, strategies):
+    def assess_strategies(self, strategies, debug=False):
         raise NotImplementedError
 
     @abstractmethod
-    def reset(self, debug=False):
+    def reset(self, verbose=False):
         """
         Reset all the environments and return an array of
         observations, or a dict of observation arrays.

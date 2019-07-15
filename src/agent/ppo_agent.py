@@ -266,8 +266,7 @@ class PPOAgent(BaseAgent):
                                                             for (curv, newv) in
                                                             zipsame(self.curpi.get_variables(), self.pi.get_variables())])
 
-    @staticmethod
-    def _traj_segment_generator(pi, env, horizon, stochastic):
+    def _traj_segment_generator(self, pi, env, horizon, stochastic):
         t = 0
         ac = env.action_space.sample()  # not used, just so we have the datatype
         new = True  # marks if we're on first timestep of an episode
@@ -365,9 +364,9 @@ class PPOAgent(BaseAgent):
 
         def act_fn(ob):
             if type(self.exploration) == float:
-                ac, _ = self.curpi.act_with_explore(stochastic, ob, self.exploration)
+                ac, _ = self.curpi.act_with_explore(stochastic=True, ob=ob, explore_prob=self.exploration)
             elif self.exploration is None:
-                ac, _ = self.curpi.act(stochastic, ob)
+                ac, _ = self.curpi.act(stochastic=True, ob=ob)
             else:
                 raise NotImplementedError
             return ac
