@@ -28,6 +28,11 @@ if __name__ == "__main__":
     exp_dir = join_path(folder, exp_name)
     # exp_dir = '.'
     res = joblib.load(join_path(exp_dir, "result.obj"))
+
+    l = len(res["episode"])
+    for i in range(l - 4, l):
+        print(res["episode"][i], res["assessment"][i], res["player"][i])
+
     # res = merge_exploitability(res)
     df = pd.DataFrame(data=res)
     sns.set()
