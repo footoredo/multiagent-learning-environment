@@ -22,10 +22,9 @@ class Statistics(object):
         self.visit_count = None
         self.keep_record = keep_record
         self.record = None
-        if save_file is None:
-            self.reset()
-        else:
-            self.load(save_file)
+        self.reset()
+        if save_file is not None:
+            raise NotImplementedError
 
     def reset(self):
         self.ob_maps = [{} for _ in range(self.n_agents)]
@@ -38,15 +37,30 @@ class Statistics(object):
         self.visit_count = [{} for _ in range(self.n_agents)]
         self.record = []
 
-    def save(self, save_path):
-        assert self.keep_record
-        joblib.dump(self.record, save_path, compress=3)
+    def save(self, save_path, full=False):
+        print("Saving statistics...")
+        if full:
+            assert self.keep_record
+            joblib.dump(self.record, save_path, compress=3)
+        else:
+            joblib.dump((self.ob_maps, self.stats, self.sum_rews, self.sum_rews_per_player,
+                         self.tot_steps, self.tot_games, self.visit_count), save_path)
+        print("Save statistics done.")
 
-    def load(self, load_path):
-        record = joblib.load(load_path)
-        update_handler = self.get_update_handler()
-        for last_obs, start, actions, rews, done in record:
-            update_handler(last_obs, start, actions, rews, None, done, None)
+    def load(self, load_path, full=False):
+        print("Loading statistics...")
+        if full:
+            record = joblib.load(load_path)
+            print("Load statistics done.")
+            print("Redoing statistics...")
+            update_handler = self.get_update_handler()
+            for last_obs, start, actions, rews, done in record:
+                update_handler(last_obs, start, actions, rews, None, done, None)
+            print("Redo statistics done.")
+        else:
+            self.ob_maps, self.stats, self.sum_rews, self.sum_rews_per_player, self.tot_steps, self.tot_games, \
+                self.visit_count = joblib.load(load_path)
+            print("Load statistics done.")
 
     def get_update_handler(self):
         def update_handler(last_obs, start, actions, rews, infos, done, obs):
@@ -102,6 +116,13 @@ class Statistics(object):
                 # print(i, self.stats[i][eob])
                 return np.array(self.to_freq(self.stats[i][eob]))
         return strategy
+
+    def get_freq(self, i, ob):
+        eob = self.ob_encoders[i](ob)
+        if eob not in self.visit_count[i]:
+            return 0.0
+        else:
+            return self.visit_count[i][eob] / self.tot_steps
 
     @staticmethod
     def to_freq(arr):
