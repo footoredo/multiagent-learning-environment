@@ -24,12 +24,20 @@ def merge_exploitability(result):
 
 if __name__ == "__main__":
     folder = "../result/"
-    exp_name = "security_seed:5410_2-2-2_gs_no-reset_5e-6_wolf_adv:20.0_1:1_latest_10"
+    exp_name = "security_seed:5410_game:2-2-10_gs_no-reset_lr:5e-6_wolf_adv:20.0_latest_every:10_no-explore"
     exp_dir = join_path(folder, exp_name)
+    # exp_dir = '.'
     res = joblib.load(join_path(exp_dir, "result.obj"))
-    res = merge_exploitability(res)
+
+    l = len(res["episode"])
+    for i in range(l - 4, l):
+        print(res["episode"][i], res["assessment"][i], res["player"][i])
+
+    # res = merge_exploitability(res)
     df = pd.DataFrame(data=res)
     sns.set()
-    g = sns.lineplot(x="episode", y="exploitability", data=df)
+    # print(res)
+    sns.lineplot(x="episode", y="assessment", hue="player", data=df)
     # g.set(yscale="log")
+    # plt.interactive(False)
     plt.show()

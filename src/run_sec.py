@@ -34,8 +34,9 @@ ppo_agent_cnt = 0
 seed = 5410
 # seed = "benchmark"
 n_slots = 2
-n_types = 2
+n_types = 3
 n_rounds = 5
+prior = [.3, .3, .4]
 reset = False
 zero_sum = False
 learning_rate = 5e-6
@@ -50,7 +51,7 @@ other = "explore"
 result_folder = "../result/"
 exp_name = "_".join(["security",
                      "seed:{}".format(seed),
-                     "{}-{}-{}".format(n_slots, n_types, n_rounds),
+                     "{}-{}-{}-{}".format(n_slots, n_types, n_rounds, ":".join(map(str, prior))),
                      "zs" if zero_sum else "gs",
                      "reset" if reset else "no-reset",
                      "{:.0e}".format(Decimal(learning_rate)),
@@ -120,7 +121,7 @@ if __name__ == "__main__":
 
     for p in [.5]:
         for _ in range(1):
-            env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=[p, 1. - p], n_rounds=n_rounds, zero_sum=zero_sum, seed=seed)
+            env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum, seed=seed)
             env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
             env.export_settings("../result/setting.pkl")
             if train:
@@ -164,3 +165,5 @@ if __name__ == "__main__":
     sns.lineplot(x="episode", y="assessment", hue="player", data=df)
     plt.savefig(join_path_and_check(exp_dir, "result.png"))
     plt.show()
+else:
+    print("fuck")
