@@ -167,6 +167,10 @@ class NaiveController(BaseController):
             final_assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
                                                            for i in range(self.num_agents)], verbose=True)
             self.records["final_assessment"] = final_assessment
+            random_statistics = Statistics(self.env)
+            random_assessment = self.env.assess_strategies([random_statistics.get_avg_strategy(i)
+                                                           for i in range(self.num_agents)], verbose=False)
+            self.records["random_assessment"] = random_assessment
 
         # self.run_benchmark(10000)
         return self.records

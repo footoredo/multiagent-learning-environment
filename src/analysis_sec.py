@@ -7,8 +7,8 @@ from common.path_utils import *
 import joblib
 import numpy as np
 
-exp_name = "security_seed:5410_game:2-2-5_gs_no-reset_lr:5e-6_wolf_adv:20.0_latest_every:1_no-explore"
-step = 10000
+exp_name = "security_seed:5410_game:2-2-5-0.5:0.5_gs_no-reset_5e-6_wolf_adv:20.0_latest_every:10_1000-test-steps-large-network"
+step = 20000
 exp_dir = join_path("../result", exp_name)
 step_dir = join_path(exp_dir, "step-{}".format(step))
 env = import_security_env(join_path(exp_dir, "env_settings.obj"))
@@ -45,7 +45,7 @@ def analysis_final_assessment(final_assessment, statistics):
     sns.distplot(result)
     plt.show()
 
-    standard = 1.36864130743 * 1.1
+    standard = 0.960784617363
 
     stupid_result = {
         "len": [],
