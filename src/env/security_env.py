@@ -386,7 +386,7 @@ class SecurityEnv(BaseEnv):
         return self.payoff[t, atk_ac, def_ac, 0]
 
     def _convert_to_type_ob(self, t):
-        ob = np.zeros(shape=self.n_slots)
+        ob = np.zeros(shape=self.n_types)
         ob[t] = 1.0
         return ob
 
