@@ -18,13 +18,17 @@ class NaiveController(BaseController):
         self.agent_fns = agent_fns
         self.step = None
         self.policy_store_every = None
+        self.policy_pool_size = None
         self.test_cnt = np.zeros(shape=(2, 2), dtype=np.int32)
         self.statistics = None
         self.records = None
+        self.push_list = None
+        self.latest_policy = None
+        self.policy_pool = None
 
     def get_push_handler(self, i):
         def push(policy):
-            self._push_policy(i, policy)
+            self.push_list.append((i, policy))
         return push
 
     @staticmethod
@@ -40,20 +44,29 @@ class NaiveController(BaseController):
 
     def get_pull_handler(self, i):
         def pull(version="latest"):
-            # if version == "latest":
-            #     version = -1
-            # if type(version) == int:
-            #     version -= i
+            k = None
+            if type(version) == tuple:
+                version, k = version
             if version == "average":
                 # fixed_policies = [self.statistics.get_avg_policy(j) for j in range(self.num_agents) if j != i]
                 fixed_policies = [MixedPolicy([self.statistics.get_avg_policy(j),
-                                               self.get_policy_with_version(self.policies[j], version="latest")],
-                                              [.9, .1]
+                                               self.latest_policy[j]],
+                                              [1 - k, k]
                                               ) for j in range(self.num_agents) if j != i]
-            else:
+            elif version == "fp":
+                fixed_policies = []
+                for j in range(self.num_agents):
+                    if j != i:
+                        if random.random() < k:
+                            fixed_policies.append(self.latest_policy[j])
+                        else:
+                            fixed_policies.append(self.statistics.get_avg_policy(j))
+            elif version == "latest":
                 fixed_policies = [self.get_policy_with_version(
                     self.policies[j], version=version
                 ) for j in range(self.num_agents) if j != i]
+            else:
+                raise NotImplementedError
 
             return ReducedEnv(self.env,
                               fixed_indices=[j for j in range(self.num_agents) if j != i],
@@ -65,10 +78,14 @@ class NaiveController(BaseController):
         return self._train(*args, **kwargs)
 
     def _push_policy(self, i, policy):
-        if self.policy_store_every is not None and self.step > 0 and self.step % self.policy_store_every == 0:
-            self.policies[i].append(policy)
+        if self.policy_store_every is not None:
+            raise NotImplementedError
         else:
-            self.policies[i][-1] = policy
+            self.latest_policy[i] = policy
+        # if self.policy_store_every is not None and self.step > 0 and self.step % self.policy_store_every == 0:
+        #     self.policies[i].append(policy)
+        # else:
+        #     self.policies[i][-1] = policy
 
     def save(self, save_path):
         for i, agent in enumerate(self.agents):
@@ -82,12 +99,13 @@ class NaiveController(BaseController):
         self.statistics.load(join_path(load_path, "statistics.obj"))
         self.step, self.records = joblib.load(join_path(load_path, "records.obj"))
 
-    def _train(self, max_steps=10000, policy_store_every=100, test_every=100,
+    def _train(self, max_steps=10000, policy_store_every=100, policy_pool_size=50, test_every=100,
                show_every=None, test_max_steps=100, record_assessment=False, train_steps=None, reset=False,
                sec_prob=False, save_every=None, save_path=None, load_state=None, load_path=None, store_results=False):
         if train_steps is None:
             train_steps = [1 for _ in range(self.env.num_agents)]
         self.policy_store_every = policy_store_every
+        self.policy_pool_size = policy_pool_size
         # env = self.env if update_handler is None else MonitorEnv(self.env, update_handler)
         env = self.env
         self.agents = [agent_fn(observation_space=env.get_observation_space(i),
@@ -114,13 +132,18 @@ class NaiveController(BaseController):
         local_results = self.records["local_results"]
         global_results = self.records["global_results"]
         assessments = self.records["assessments"]
-        self.policies = [[agent.get_initial_policy()] for agent in self.agents]
+        self.latest_policy = [agent.get_initial_policy() for agent in self.agents]
+        self.policy_pool = [[] for _ in self.agents]
 
         def check_every(every):
             return every is not None and self.step > 0 and self.step % every == 0
 
+        self.push_list = []
+
         last_time = time.time()
         while self.step < max_steps:
+            for i, policy in self.push_list:
+                self._push_policy(i, policy)
             for i, agent in enumerate(self.agents):
                 for _ in range(train_steps[i]):
                     if sec_prob:

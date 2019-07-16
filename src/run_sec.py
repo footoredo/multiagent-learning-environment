@@ -35,7 +35,7 @@ seed = 5410
 # seed = "benchmark"
 n_slots = 2
 n_types = 2
-n_rounds = 10
+n_rounds = 2
 prior = [.5, .5]
 reset = False
 zero_sum = False
@@ -43,10 +43,11 @@ learning_rate = 5e-6
 schedule = ("wolf_adv", 20.0)
 # schedule = "constant"
 train_steps = [1, 1]
+# opponent = "average"
 opponent = "latest"
 test_every = 10
-max_steps = 27000
-other = "1000-test-steps-large-network"
+max_steps = 10000
+other = "100-test-steps-large-network"
 
 result_folder = "../result/"
 exp_name = "_".join(["security",
@@ -55,17 +56,20 @@ exp_name = "_".join(["security",
                      "zs" if zero_sum else "gs",
                      "reset" if reset else "no-reset",
                      "{:.0e}".format(Decimal(learning_rate)),
-                     ":".join(list(map(str, schedule))),
+                     ":".join(list(map(str, schedule))) if type(schedule) == tuple else schedule,
                      # ":".join(list(map(str, train_steps))),
                      opponent,
                      "every:{}".format(test_every),
                      other])
+# exp_name = "security_seed:5410_2-2-2_gs_no-reset_5e-6_wolf_adv:20.0_1:1_latest_10"
 exp_dir = os.path.join(result_folder, exp_name)
 
 
 def get_make_ppo_agent(timesteps_per_actorbatch, max_episodes):
     def make_ppo_agent(observation_space, action_space, handlers):
         def policy(name, agent_name, ob_space, ac_space):
+            # return MLPPolicy(name=name, agent_name=agent_name, ob_space=ob_space, ac_space=ac_space,
+            #                  hid_size=256, num_hid_layers=4)
             return MLPPolicy(name=name, agent_name=agent_name, ob_space=ob_space, ac_space=ac_space,
                              hid_size=256, num_hid_layers=4)
 
@@ -121,7 +125,7 @@ if __name__ == "__main__":
 
     for p in [.5]:
         for _ in range(1):
-            env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum, seed=seed)
+            env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum, seed=seed, export_gambit=True)
             env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
             env.export_settings(join_path_and_check(exp_dir, "env_settings.obj"))
             if train:
@@ -130,8 +134,8 @@ if __name__ == "__main__":
                 train_result = controller.train(max_steps=max_steps, policy_store_every=None,
                                                 test_every=test_every,  test_max_steps=1000,
                                                 record_assessment=True, train_steps=train_steps, reset=reset,
-                                                load_state=True, load_path=join_path(exp_dir, "step-27000"),
-                                                save_every=1000, save_path=exp_dir)
+                                                load_state=False, load_path=join_path(exp_dir, "step-10000"),
+                                                save_every=100, save_path=exp_dir)
                 assessments = train_result["assessments"]
                 joblib.dump(train_result["final_assessment"], join_path_and_check(exp_dir, "final_assessment.obj"))
                 print(assessments)
