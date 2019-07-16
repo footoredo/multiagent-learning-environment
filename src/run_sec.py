@@ -35,17 +35,17 @@ seed = 5410
 # seed = "benchmark"
 n_slots = 2
 n_types = 2
-n_rounds = 5
+n_rounds = 10
 prior = [.5, .5]
 reset = False
 zero_sum = False
 learning_rate = 5e-6
-schedule = ("cfr", 20.0)
+schedule = ("wolf_adv", 20.0)
 # schedule = "constant"
 train_steps = [1, 1]
 opponent = "latest"
 test_every = 10
-max_steps = 20000
+max_steps = 40000
 other = "1000-test-steps-large-network"
 
 result_folder = "../result/"
@@ -130,7 +130,7 @@ if __name__ == "__main__":
                 train_result = controller.train(max_steps=max_steps, policy_store_every=None,
                                                 test_every=test_every,  test_max_steps=1000,
                                                 record_assessment=True, train_steps=train_steps, reset=reset,
-                                                load_state=False, load_path=join_path(exp_dir, "step-20000"),
+                                                load_state=True, load_path=join_path(exp_dir, "step-20000"),
                                                 save_every=1000, save_path=exp_dir)
                 assessments = train_result["assessments"]
                 joblib.dump(train_result["final_assessment"], join_path_and_check(exp_dir, "final_assessment.obj"))

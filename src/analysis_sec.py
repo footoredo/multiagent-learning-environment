@@ -34,7 +34,7 @@ def analysis_final_assessment(final_assessment, statistics):
     atk_result, def_result = final_assessment
 
     result = []
-    for _, v in atk_result:
+    for h, v in atk_result:
         result.append(v)
 
     result = sorted(result)
@@ -42,23 +42,30 @@ def analysis_final_assessment(final_assessment, statistics):
     print("99%:", result[int(0.99 * len(result))])
     print("99.9%:", result[int(0.999 * len(result))])
 
-    sns.distplot(result)
-    plt.show()
+    # sns.distplot(result)
+    # plt.show()
 
-    standard = 0.960784617363
+    standard = 0
 
     stupid_result = {
         "len": [],
         "freq": [],
-        "eps": []
+        "eps": [],
+        "type": []
     }
     for h, v in atk_result:
-        if v > standard:
-            stupid_result["len"].append(len(h) - 1)
-            stupid_result["freq"].append(statistics.get_freq(0, get_atk_ob(h)))
-            stupid_result["eps"].append(v)
+        if len(h) == 5 and h[0] == 0:
+        # if True:
+            if v > standard:
+                stupid_result["len"].append(len(h) - 1)
+                stupid_result["freq"].append(statistics.get_freq(0, get_atk_ob(h)))
+                # stupid_result["eps"].append(v / (11 - len(h)))
+                stupid_result["eps"].append(v)
+                stupid_result["type"].append(h[0])
 
     df = pd.DataFrame(data=stupid_result)
+    # sns.relplot(x="freq", y="eps", hue="type", data=df)
+    # sns.jointplot(x="freq", y="eps", kind="hex", data=df)
     sns.jointplot(x="freq", y="eps", data=df)
     plt.show()
 

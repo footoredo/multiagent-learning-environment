@@ -189,11 +189,16 @@ class PPOAgent(BaseAgent):
                         cur_lrmult = 1.0
                     else:
                         cur_lrmult = k
-                elif schedule == "cfr":
-                    if np.average(seg["delta"]) > 0.:
-                        cur_lrmult = k
+                elif schedule == "wolf_adv2":
+                    if np.average(seg["adv"]) > 0.:
+                        cur_lrmult = 1.0
                     else:
-                        cur_lrmult = 0.
+                        cur_lrmult = k
+                elif schedule == "cfr":
+                    if np.average(seg["adv"]) > 0.:
+                        cur_lrmult = 1.
+                    else:
+                        cur_lrmult = 1.
                 elif schedule == "wolf_stat":
                     assert len(seg["rew"]) == 1
                     if seg["rew"][0] > statistics.get_avg_rew(i, seg["ob"][0]):
