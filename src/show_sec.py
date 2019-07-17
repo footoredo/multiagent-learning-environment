@@ -24,7 +24,7 @@ def merge_exploitability(result):
 
 if __name__ == "__main__":
     folder = "../result/"
-    exp_name = "security_seed:5410_game:3-2-2-0.5:0.5_gs_no-reset_5e-6_wolf_adv:20.0_latest_every:10_1000-test-steps-large-network"
+    exp_name = "security_seed:5410_game:2-2-2-0.5:0.5_gs_no-reset_5e-6_wolf_adv:20.0_fp:0.5_every:10_100-test-steps-large-network"
     exp_dir = join_path(folder, exp_name)
     # exp_dir = '.'
     res = joblib.load(join_path(exp_dir, "result.obj"))

@@ -112,7 +112,7 @@ class GambitSolver:
 
 
 class SecurityEnv(BaseEnv):
-    def __init__(self, n_slots, n_types, prior, n_rounds, value_range=10., zero_sum=False, seed=None, record_def=False):
+    def __init__(self, n_slots, n_types, prior, n_rounds, value_range=10., zero_sum=False, seed=None, record_def=False, export_gambit=False):
         self.n_slots = n_slots
         self.n_types = n_types
         self.prior = prior if prior is not None else np.random.rand(n_types)
@@ -170,8 +170,9 @@ class SecurityEnv(BaseEnv):
 
         # print(self.payoff[0, :, :, 0])
 
-        # self.gambit_solver = GambitSolver(n_slots=n_slots, n_types=n_types, n_stages=n_rounds, payoff=self.payoff, prior=self.prior)
-        # self.gambit_solver.generate()
+        if export_gambit:
+            self.gambit_solver = GambitSolver(n_slots=n_slots, n_types=n_types, n_stages=n_rounds, payoff=self.payoff, prior=self.prior)
+            self.gambit_solver.generate()
 
         self.attacker_strategy_exploiter = self._AttackerStrategyExploiter(self)
         self.defender_strategy_exploiter = self._DefenderStrategyExploiter(self)
