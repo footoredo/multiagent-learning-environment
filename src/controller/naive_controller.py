@@ -62,9 +62,7 @@ class NaiveController(BaseController):
                         else:
                             fixed_policies.append(self.statistics.get_avg_policy(j))
             elif version == "latest":
-                fixed_policies = [self.get_policy_with_version(
-                    self.policies[j], version=version
-                ) for j in range(self.num_agents) if j != i]
+                fixed_policies = [self.latest_policy[j] for j in range(self.num_agents) if j != i]
             else:
                 raise NotImplementedError
 

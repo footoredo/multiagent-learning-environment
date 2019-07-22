@@ -143,6 +143,7 @@ class PPOAgent(BaseAgent):
                     break
                 elif max_seconds and time.time() - tstart >= max_seconds:
                     break
+                # print(max_iters, iters_so_far)
 
                 # logger.log("********** Iteration %i ************" % iters_so_far)
 
@@ -162,6 +163,7 @@ class PPOAgent(BaseAgent):
                     # print(atarg)
                 d = Dataset(dict(ob=ob, ac=ac, atarg=atarg, vtarg=tdlamret), deterministic=pi.recurrent)
                 optim_batchsize = ob.shape[0]
+                # print("optim_batchsize:", optim_batchsize)
 
                 if type(self.schedule) == tuple:
                     schedule, k = self.schedule
@@ -244,6 +246,7 @@ class PPOAgent(BaseAgent):
                 losses = []
                 for batch in d.iterate_once(optim_batchsize):
                     newlosses = compute_losses(batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
+                    print(newlosses)
                     losses.append(newlosses)
                 meanlosses, _, _ = mpi_moments(losses, axis=0)
                 # logger.log(fmt_row(13, meanlosses))
@@ -308,6 +311,9 @@ class PPOAgent(BaseAgent):
             # before returning segment [0, T-1] so we get the correct
             # terminal value
             if t > 0 and t % horizon == 0:
+                # print ({"ob": obs, "rew": rews, "vpred": vpreds, "new": news,
+                #        "ac": acs, "prevac": prevacs, "nextvpred": vpred * (1 - new),
+                #        "ep_rets": ep_rets, "ep_lens": ep_lens})
                 yield {"ob": obs, "rew": rews, "vpred": vpreds, "new": news,
                        "ac": acs, "prevac": prevacs, "nextvpred": vpred * (1 - new),
                        "ep_rets": ep_rets, "ep_lens": ep_lens}
@@ -345,6 +351,7 @@ class PPOAgent(BaseAgent):
                         0)  # last element is only used for last vtarg, but we already zeroed it if last new = 1
         vpred = np.append(seg["vpred"], seg["nextvpred"])
         T = len(seg["rew"])
+        # print(T, seg["rew"])
         # print(T)
         seg["adv"] = gaelam = np.empty(T, 'float32')
         seg["delta"] = delta = np.empty(T, 'float32')
@@ -359,6 +366,9 @@ class PPOAgent(BaseAgent):
             gaelam[t] = lastgaelam = delta[t] + gamma * lam * nonterminal * lastgaelam
         # print(seg["adv"])
         seg["tdlamret"] = seg["adv"] + seg["vpred"]
+        # print("adv", seg["adv"])
+        # print("vpred", seg["vpred"])
+        # print("seg", seg)
 
     def _get_policy(self):
         self.assign_cur_eq_new()
