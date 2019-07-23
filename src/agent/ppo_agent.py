@@ -150,6 +150,9 @@ class PPOAgent(BaseAgent):
                 seg = seg_gen.__next__()
                 self._add_vtarg_and_adv(seg, gamma, lam)
 
+                if i == 1:
+                    print(seg["vpred"])
+
                 # ob, ac, atarg, ret, td1ret = map(np.concatenate, (obs, acs, atargs, rets, td1rets))
                 # logger.log(seg["rew"])
                 ob, ac, atarg, tdlamret = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"]
@@ -246,7 +249,7 @@ class PPOAgent(BaseAgent):
                 losses = []
                 for batch in d.iterate_once(optim_batchsize):
                     newlosses = compute_losses(batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
-                    print(newlosses)
+                    # print(newlosses)
                     losses.append(newlosses)
                 meanlosses, _, _ = mpi_moments(losses, axis=0)
                 # logger.log(fmt_row(13, meanlosses))
@@ -303,6 +306,7 @@ class PPOAgent(BaseAgent):
             if type(self.exploration) == float:
                 ac, vpred = pi.act_with_explore(stochastic, ob, self.exploration)
             elif self.exploration is None:
+                # ac, vpred = pi.act_with_explore(stochastic, ob, .1)
                 ac, vpred = pi.act(stochastic, ob)
             else:
                 raise NotImplementedError
@@ -314,6 +318,7 @@ class PPOAgent(BaseAgent):
                 # print ({"ob": obs, "rew": rews, "vpred": vpreds, "new": news,
                 #        "ac": acs, "prevac": prevacs, "nextvpred": vpred * (1 - new),
                 #        "ep_rets": ep_rets, "ep_lens": ep_lens})
+                # print(vpreds)
                 yield {"ob": obs, "rew": rews, "vpred": vpreds, "new": news,
                        "ac": acs, "prevac": prevacs, "nextvpred": vpred * (1 - new),
                        "ep_rets": ep_rets, "ep_lens": ep_lens}
@@ -404,8 +409,6 @@ class PPOAgent(BaseAgent):
 
     def train(self, *args, **kwargs):
         self.train_phase(*args, **kwargs)
-
-
 
 
 def flatten_lists(listoflists):

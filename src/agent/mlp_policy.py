@@ -77,7 +77,7 @@ class MLPPolicy(object):
 
     def act_with_explore(self, stochastic, ob, explore_prob):
         if np.random.rand() < explore_prob:
-            return np.random.choice(2), 0.
+            return np.array(np.random.choice(2)), 0.
         else:
             ac1, vpred1 = self._act(stochastic, ob[None])
             return ac1[0], vpred1[0]

@@ -5,6 +5,7 @@ from agent.dummy_agent import DummyAgent
 from agent.infant_agent import InfantAgent
 from agent.self_play_agent import SelfPlayAgent
 from agent.ppo_agent import PPOAgent
+from agent.pac_agent import PACAgent
 from agent.mlp_policy import MLPPolicy
 import seaborn as sns
 import pandas as pd
@@ -30,15 +31,17 @@ def make_self_play_agent(observation_space, action_space, handlers):
 
 
 ppo_agent_cnt = 0
+pac_agent_cnt = 0
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run security game.")
 
     parser.add_argument('--seed', type=int)
+    parser.add_argument('--agent', type=str, default="ppo")
     parser.add_argument('--n-slots', type=int, default=2)
     parser.add_argument('--n-types', type=int, default=2)
-    parser.add_argument('--n_rounds', type=int, default=2)
+    parser.add_argument('--n-rounds', type=int, default=2)
     parser.add_argument('--prior', type=int, nargs='+')
     parser.add_argument('--reset', action="store_true")
     parser.add_argument('--zero-sum', action="store_true")
@@ -69,6 +72,7 @@ prior = [.5, .5]
 reset = False
 zero_sum = False
 learning_rate = 5e-4
+agent = "ppo"
 # schedule = ("wolf_adv", 20.0)
 schedule = "constant"
 train_steps = [1, 1]
@@ -86,6 +90,7 @@ other = "1000-test-steps-large-network"
 
 result_folder = "../result/"
 exp_name = "_".join(["security",
+                     agent,
                      "seed:{}".format(seed),
                      "game:{}-{}-{}-{}".format(n_slots, n_types, n_rounds, ":".join(map(str, prior))),
                      "zs" if zero_sum else "gs",
@@ -120,6 +125,26 @@ def get_make_ppo_agent(timesteps_per_actorbatch, max_iterations):
     return make_ppo_agent
 
 
+def get_make_pac_agent(timesteps_per_actorbatch, max_iterations):
+    def make_pac_agent(observation_space, action_space, handlers):
+        def policy(name, agent_name, ob_space, ac_space):
+            # return MLPPolicy(name=name, agent_name=agent_name, ob_space=ob_space, ac_space=ac_space,
+            #                  hid_size=256, num_hid_layers=4)
+            return MLPPolicy(name=name, agent_name=agent_name, ob_space=ob_space, ac_space=ac_space,
+                             hid_size=network_width, num_hid_layers=network_depth)
+
+        global pac_agent_cnt
+        agnt = PACAgent(name="pac_agent_%d" % pac_agent_cnt, policy_fn=policy,
+                        ob_space=observation_space, ac_space=action_space, handlers=handlers,
+                        timesteps_per_actorbatch=timesteps_per_actorbatch,
+                        optim_epochs=1, optim_stepsize=learning_rate,
+                        gamma=0.99, max_iters=max_iterations,
+                        schedule=schedule, opponent=opponent)
+        pac_agent_cnt += 1
+        return agnt
+    return make_pac_agent
+
+
 def debugger(infos):
     # print(infos[])
     print(sum(info[0] for info in infos) / len(infos),
@@ -141,6 +166,7 @@ if __name__ == "__main__":
 
     seed = args.seed
     # seed = "benchmark"
+    agent = args.agent
     n_slots = args.n_slots
     n_types = args.n_types
     n_rounds = args.n_rounds
@@ -166,6 +192,7 @@ if __name__ == "__main__":
     result_folder = "../result/"
     exp_name = args.exp_name or \
         "_".join(["security",
+                  agent,
                   "seed:{}".format(seed),
                   "game:{}-{}-{}-{}".format(n_slots, n_types, n_rounds, ":".join(map(str, prior))),
                   "zs" if zero_sum else "gs",
@@ -218,16 +245,26 @@ if __name__ == "__main__":
             env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
             if train:
                 # test_every = 1
-                controller = NaiveController(env, [get_make_ppo_agent(timesteps_per_batch, iterations_per_round),
-                                                   get_make_ppo_agent(timesteps_per_batch, iterations_per_round)])
-                train_result = controller.train(max_steps=max_steps, policy_store_every=None,
-                                                test_every=test_every,  test_max_steps=test_steps,
-                                                record_assessment=True, train_steps=train_steps, reset=reset,
-                                                load_state=load, load_path=join_path(exp_dir, "step-{}".format(load_step)),
-                                                save_every=save_every, save_path=exp_dir)
+                if agent == "ppo":
+                    agents = [get_make_ppo_agent(timesteps_per_batch, iterations_per_round),
+                              get_make_ppo_agent(timesteps_per_batch, iterations_per_round)]
+                elif agent == "pac":
+                    agents = [get_make_pac_agent(timesteps_per_batch, iterations_per_round),
+                              get_make_pac_agent(timesteps_per_batch, iterations_per_round)]
+                else:
+                    raise NotImplementedError
+                controller = NaiveController(env, agents)
+                train_result, local_results = \
+                    controller.train(max_steps=max_steps, policy_store_every=None,
+                                     test_every=test_every,  test_max_steps=test_steps,
+                                     record_assessment=True, train_steps=train_steps, reset=reset,
+                                     load_state=load, load_path=join_path(exp_dir, "step-{}".format(load_step)),
+                                     save_every=save_every, save_path=exp_dir, store_results=False)
                 env.export_settings(join_path_and_check(exp_dir, "env_settings.obj"))
                 assessments = train_result["assessments"]
                 joblib.dump(train_result["final_assessment"], join_path_and_check(exp_dir, "final_assessment.obj"))
+                joblib.dump(local_results, join_path_and_check(exp_dir, "local_results.obj"))
+                # joblib.dump(train_result["local_"], join_path_and_check(exp_dir, "final_assessment.obj"))
                 print(assessments)
                 print(train_result["random_assessment"])
                 for i in range(test_every, max_steps, test_every):

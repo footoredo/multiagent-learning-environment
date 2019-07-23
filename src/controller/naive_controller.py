@@ -28,7 +28,8 @@ class NaiveController(BaseController):
 
     def get_push_handler(self, i):
         def push(policy):
-            self.push_list.append((i, policy))
+            # self.push_list.append((i, policy))
+            self._push_policy(i, policy)
         return push
 
     @staticmethod
@@ -127,8 +128,12 @@ class NaiveController(BaseController):
         if load_state:
             self.load(load_path)
 
-        local_results = self.records["local_results"]
-        global_results = self.records["global_results"]
+        if store_results:
+            local_results = self.records["local_results"]
+            global_results = self.records["global_results"]
+        else:
+            local_results = []
+            global_results = []
         assessments = self.records["assessments"]
         self.latest_policy = [agent.get_initial_policy() for agent in self.agents]
         self.policy_pool = [[] for _ in self.agents]
@@ -156,9 +161,9 @@ class NaiveController(BaseController):
                 reset = False
             if check_every(test_every):
                 local_result, global_result = self.run_test(test_max_steps)
-                if store_results:
-                    local_results.append(local_result)
-                    global_results.append(global_result)
+                # if store_results:
+                local_results.append(local_result)
+                global_results.append(global_result)
                 if record_assessment:
                     # rews = self.run_benchmark(1000)
                     assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
@@ -194,7 +199,7 @@ class NaiveController(BaseController):
             self.records["random_assessment"] = random_assessment
 
         # self.run_benchmark(10000)
-        return self.records
+        return self.records, local_results
 
     def run_benchmark(self, max_steps=500):
         statistics = Statistics(self.env)
