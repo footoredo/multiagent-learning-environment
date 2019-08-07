@@ -107,14 +107,14 @@ class Statistics(object):
                 return random.choices(range(self.n_acs[i]), weights=self.stats[i][eob])[0]
         return Policy(act_fn)
 
-    def get_avg_strategy(self, i):
+    def get_avg_strategy(self, i, trim_th=0.):
         def strategy(ob):
             eob = self.ob_encoders[i](ob)
             if eob not in self.stats[i]:
                 return np.ones(self.n_acs[i]) / self.n_acs[i]
             else:
                 # print(i, self.stats[i][eob])
-                return np.array(self.to_freq(self.stats[i][eob]))
+                return np.array(self.trim(self.to_freq(self.stats[i][eob]), trim_th))
         return strategy
 
     def get_freq(self, i, ob):
@@ -123,6 +123,14 @@ class Statistics(object):
             return 0.0
         else:
             return self.visit_count[i][eob] / self.tot_steps
+
+    @staticmethod
+    def trim(freq, trim_th):
+        for i in range(freq.shape[0]):
+            if freq[i] < trim_th:
+                freq[i] = 0.
+
+        return freq / np.sum(freq)
 
     @staticmethod
     def to_freq(arr):

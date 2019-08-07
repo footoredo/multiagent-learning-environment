@@ -143,15 +143,18 @@ class NaiveController(BaseController):
 
         self.push_list = []
 
+        train_info = [[] for _ in range(self.num_agents)]
+
         last_time = time.time()
         while self.step < max_steps:
             for i, policy in self.push_list:
                 self._push_policy(i, policy)
             for i, agent in enumerate(self.agents):
+                assert(train_steps[i] == 1)
                 for _ in range(train_steps[i]):
                     if sec_prob:
                         env.update_attacker_policy(self.get_policy_with_version(self.policies[0], version="latest"))
-                    agent.train(i, self.statistics, self.step / max_steps)
+                    train_info[i].append(agent.train(i, self.statistics, self.step / max_steps, self.step))
 
             self.step += 1
 
@@ -190,7 +193,7 @@ class NaiveController(BaseController):
             self.statistics.show_statistics()
 
         if record_assessment:
-            final_assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
+            final_assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i, trim_th=1e-3)
                                                            for i in range(self.num_agents)], verbose=True)
             self.records["final_assessment"] = final_assessment
             random_statistics = Statistics(self.env)
@@ -199,7 +202,7 @@ class NaiveController(BaseController):
             self.records["random_assessment"] = random_assessment
 
         # self.run_benchmark(10000)
-        return self.records, local_results
+        return self.records, local_results, train_info
 
     def run_benchmark(self, max_steps=500):
         statistics = Statistics(self.env)

@@ -241,8 +241,9 @@ if __name__ == "__main__":
 
     for p in [.5]:
         for _ in range(1):
-            env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum, seed=seed, export_gambit=n_rounds <= 5)
-            env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
+            env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum,
+                              seed=seed, export_gambit=n_rounds <= 5 and n_slots <= 2)
+            # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
             if train:
                 # test_every = 1
                 if agent == "ppo":
@@ -254,7 +255,7 @@ if __name__ == "__main__":
                 else:
                     raise NotImplementedError
                 controller = NaiveController(env, agents)
-                train_result, local_results = \
+                train_result, local_results, train_info = \
                     controller.train(max_steps=max_steps, policy_store_every=None,
                                      test_every=test_every,  test_max_steps=test_steps,
                                      record_assessment=True, train_steps=train_steps, reset=reset,
@@ -264,6 +265,7 @@ if __name__ == "__main__":
                 assessments = train_result["assessments"]
                 joblib.dump(train_result["final_assessment"], join_path_and_check(exp_dir, "final_assessment.obj"))
                 joblib.dump(local_results, join_path_and_check(exp_dir, "local_results.obj"))
+                joblib.dump(train_info, join_path_and_check(exp_dir, "train_info.obj"))
                 # joblib.dump(train_result["local_"], join_path_and_check(exp_dir, "final_assessment.obj"))
                 print(assessments)
                 print(train_result["random_assessment"])

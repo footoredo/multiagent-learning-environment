@@ -118,7 +118,7 @@ class PPOAgent(BaseAgent):
         self.average_utility = 0.0
         self.tot = 0
 
-        def train_phase(i, statistics: Statistics, progress):
+        def train_phase(i, statistics: Statistics, progress, ep_i):
             # print(self.scope + ("avg util: %.5f" % self.average_utility))
             env = self.pull(opponent)
             seg_gen = self._traj_segment_generator(self.pi, env, timesteps_per_actorbatch, stochastic=True)
@@ -133,6 +133,8 @@ class PPOAgent(BaseAgent):
             assert sum([max_iters > 0, max_timesteps > 0, max_episodes > 0,
                         max_seconds > 0]) == 1, "Only one time constraint permitted"
 
+            rews = []
+            vpreds = []
             while True:
                 if callback: callback(locals(), globals())
                 if max_timesteps and timesteps_so_far >= max_timesteps:
@@ -150,8 +152,11 @@ class PPOAgent(BaseAgent):
                 seg = seg_gen.__next__()
                 self._add_vtarg_and_adv(seg, gamma, lam)
 
-                if i == 1:
-                    print(seg["vpred"])
+                rews.append(np.average(seg["rew"]))
+                vpreds.append(np.average(seg["vpred"]))
+
+                # if i == 1:
+                #     print(seg["vpred"])
 
                 # ob, ac, atarg, ret, td1ret = map(np.concatenate, (obs, acs, atargs, rets, td1rets))
                 # logger.log(seg["rew"])
@@ -215,6 +220,8 @@ class PPOAgent(BaseAgent):
                         cur_lrmult = 1.0
                     else:
                         cur_lrmult = k
+                elif schedule == "sqrt":
+                    cur_lrmult = 1.0 / np.sqrt(ep_i + 1)
                 else:
                     raise NotImplementedError
 
@@ -276,6 +283,11 @@ class PPOAgent(BaseAgent):
             # print(time.time() - tstart)
             self.push(self._get_policy())
             del env
+            return {
+                "rews": rews,
+                "vpreds": vpreds
+            }
+
         self.train_phase = train_phase
         self.curpi = self.policy_fn("curpi%d" % self.pi_cnt, self.name, self.ob_space, self.ac_space)  # Network for submitted policy
         self.assign_cur_eq_new = U.function([], [], updates=[tf.assign(curv, newv)
@@ -408,7 +420,7 @@ class PPOAgent(BaseAgent):
         return self._get_policy()
 
     def train(self, *args, **kwargs):
-        self.train_phase(*args, **kwargs)
+        return self.train_phase(*args, **kwargs)
 
 
 def flatten_lists(listoflists):

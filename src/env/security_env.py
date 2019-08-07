@@ -4,6 +4,7 @@ from gym import spaces
 import numpy as np
 import subprocess
 from copy import deepcopy
+from numpy import linalg as LA
 import csv
 import joblib
 import seaborn as sns
@@ -169,6 +170,26 @@ class SecurityEnv(BaseEnv):
                             self.payoff[t, i, j, 1] = self.dfd_pen[j]
 
         # print(self.payoff[0, :, :, 0])
+        # print(self.payoff[0, :, :, 1])
+
+        # tmp_atk_p = self.payoff[0, :, :, 0]
+        # tmp_dfd_p = self.payoff[0, :, :, 1]
+        # # print(np.matmul(tmp_dfd_p.T, tmp_atk_p))
+        # print(LA.eigvals(np.matmul(tmp_dfd_p.T, tmp_atk_p)))
+        # tmp_atk_p = self.payoff[1, :, :, 0]
+        # tmp_dfd_p = self.payoff[1, :, :, 1]
+        # # print(np.matmul(tmp_dfd_p.T, tmp_atk_p))
+        # print(LA.eigvals(np.matmul(tmp_dfd_p.T, tmp_atk_p)))
+
+        # print(self.payoff[0, :, :, 0])
+
+        for t in range(self.n_types):
+            tmp_atk_p = self.payoff[t, :, :, 0]
+            tmp_dfd_p = self.payoff[t, :, :, 1]
+            print("\n{}".format(t))
+            print(tmp_atk_p)
+            print(tmp_dfd_p)
+            print(LA.eigvals(np.matmul(tmp_dfd_p.T, tmp_atk_p)))
 
         if export_gambit:
             self.gambit_solver = GambitSolver(n_slots=n_slots, n_types=n_types, n_stages=n_rounds, payoff=self.payoff, prior=self.prior)
@@ -348,10 +369,10 @@ class SecurityEnv(BaseEnv):
 
         atk_result = []
 
-        atk_pbne_eps = 0.
+        atk_pbne_eps = [0.] * self.n_types
         for t in range(self.n_types):
             for h, v in atk_u[t].items():
-                atk_pbne_eps = max(atk_pbne_eps, def_br[t][h] - v)
+                atk_pbne_eps[t] = max(atk_pbne_eps[t], def_br[t][h] - v)
                 atk_result.append(([t] + self.decode_history(h), def_br[t][h] - v))
 
         def_result = []
@@ -363,10 +384,10 @@ class SecurityEnv(BaseEnv):
 
         print("PBNE:", atk_pbne_eps, def_pbne_eps)
 
-        atk_eps = 0.
+        atk_eps = [0.] * self.n_types
         initial_state = self.encode_history([])
         for t in range(self.n_types):
-            atk_eps += self.prior[t] * (def_br[t][initial_state] - atk_u[t][initial_state])
+            atk_eps[t] += def_br[t][initial_state] - atk_u[t][initial_state]
 
         def_eps = atk_br[initial_state] - def_u[initial_state]
 
@@ -375,7 +396,8 @@ class SecurityEnv(BaseEnv):
         if verbose:
             return [atk_result, def_result]
         else:
-            return [[atk_eps, atk_pbne_eps], [def_eps, def_pbne_eps]]
+            return [[np.sum(np.array(atk_eps) * np.array(self.prior)),
+                     np.sum(atk_pbne_eps * np.array(self.prior))], [def_eps, def_pbne_eps]]
 
     def get_def_payoff(self, atk_ac, def_ac, prob):
         ret = 0.

@@ -7,8 +7,8 @@ from common.path_utils import *
 import joblib
 import numpy as np
 
-exp_name = "security_seed:5410_game:2-2-5-0.5:0.5_gs_no-reset_5e-6_wolf_adv:20.0_latest_every:10_1000-test-steps-large-network"
-step = 20000
+exp_name = "security_ppo_seed:5410_game:2-2-5-0.5:0.5_gs_no-reset_5e-6_constant_latest_test_every:10_test_steps:1000_network:256-4_train:10*20"
+step = 10000
 exp_dir = join_path("../result", exp_name)
 step_dir = join_path(exp_dir, "step-{}".format(step))
 env = import_security_env(join_path(exp_dir, "env_settings.obj"))
@@ -45,7 +45,7 @@ def analysis_final_assessment(final_assessment, statistics):
     # sns.distplot(result)
     # plt.show()
 
-    standard = 0
+    standard = 1.05
 
     stupid_result = {
         "len": [],
@@ -54,14 +54,13 @@ def analysis_final_assessment(final_assessment, statistics):
         "type": []
     }
     for h, v in atk_result:
-        if len(h) == 5 and h[0] == 0:
-        # if True:
-            if v > standard:
-                stupid_result["len"].append(len(h) - 1)
-                stupid_result["freq"].append(statistics.get_freq(0, get_atk_ob(h)))
-                # stupid_result["eps"].append(v / (11 - len(h)))
-                stupid_result["eps"].append(v)
-                stupid_result["type"].append(h[0])
+        if v > standard:
+            print(h, v, statistics.get_freq(0, get_atk_ob(h)))
+            stupid_result["len"].append(len(h) - 1)
+            stupid_result["freq"].append(statistics.get_freq(0, get_atk_ob(h)))
+            # stupid_result["eps"].append(v / (11 - len(h)))
+            stupid_result["eps"].append(v)
+            stupid_result["type"].append(h[0])
 
     df = pd.DataFrame(data=stupid_result)
     # sns.relplot(x="freq", y="eps", hue="type", data=df)
