@@ -7,8 +7,8 @@ from common.path_utils import *
 import joblib
 import numpy as np
 
-exp_name = "security_ppo_seed:5410_game:5-2-5-0.5:0.5_gs_no-reset_5e-6_constant_latest_test_every:10_test_steps:1000_network:256-4_train:10*20"
-step = 10000
+exp_name = "security_ppo_seed:5410_game:3-2-2-0.5:0.5_gs_no-reset_5e-6_constant_latest_test_every:10_test_steps:1000_network:256-4_train:4*10"
+step = 4000
 exp_dir = join_path("../result", exp_name)
 step_dir = join_path(exp_dir, "step-{}".format(step))
 env = import_security_env(join_path(exp_dir, "env_settings.obj"))
@@ -35,7 +35,9 @@ def analysis_final_assessment(final_assessment, statistics):
 
     result = []
     for h, v in atk_result:
-        result.append(v)
+        # if statistics.get_freq(0, get_atk_ob(h)) > 1e-5:
+        print(h, v, statistics.get_freq(0, get_atk_ob(h)))
+        result.append(v / (10. * (env.n_rounds + 1 - len(h))))
 
     result = sorted(result)
     print("95%:", result[int(0.95 * len(result))])
@@ -45,7 +47,7 @@ def analysis_final_assessment(final_assessment, statistics):
     # sns.distplot(result)
     # plt.show()
 
-    standard = 1000.
+    standard = .15
 
     stupid_result = {
         "len": [],
@@ -58,8 +60,8 @@ def analysis_final_assessment(final_assessment, statistics):
 
     for h, v in atk_result:
         weighted_sum[len(h) - 1] += statistics.get_freq(0, get_atk_ob(h)) * v * env.n_rounds / (10. * (env.n_rounds + 1 - len(h)))
-        if v > standard:
-            print(h, v, statistics.get_freq(0, get_atk_ob(h)))
+        if v / (10. * (env.n_rounds + 1 - len(h))) > standard and statistics.get_freq(0, get_atk_ob(h)) * env.n_rounds > .1 * .5 * np.power(1. / 5, len(h) - 1):
+            print(h, v / (10. * (env.n_rounds + 1 - len(h))), statistics.get_freq(0, get_atk_ob(h)))
             stupid_result["len"].append(len(h) - 1)
             stupid_result["freq"].append(statistics.get_freq(0, get_atk_ob(h)))
             # stupid_result["eps"].append(v / (11 - len(h)))

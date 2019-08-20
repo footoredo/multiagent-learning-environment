@@ -75,6 +75,7 @@ class PPOAgent(BaseAgent):
         pi = policy_fn("pi", self.name, ob_space, ac_space)  # Construct network for new policy
         oldpi = policy_fn("oldpi", self.name, ob_space, ac_space)  # Network for old policy
         atarg = tf.placeholder(dtype=tf.float32, shape=[None])  # Target advantage function (if applicable)
+        prob = tf.placeholder(dtype=tf.float32, shape=[None])  # Visiting probability
         ret = tf.placeholder(dtype=tf.float32, shape=[None])  # Empirical return
 
         lrmult = tf.placeholder(name='lrmult', dtype=tf.float32,
@@ -90,22 +91,25 @@ class PPOAgent(BaseAgent):
         pol_entpen = (-entcoeff) * meanent
 
         ratio = tf.exp(pi.pd.logp(ac) - oldpi.pd.logp(ac))  # pnew / pold
-        surr1 = ratio * atarg  # surrogate from conservative policy iteration
-        surr2 = tf.clip_by_value(ratio, 1.0 - clip_param, 1.0 + clip_param) * atarg  #
+        new_targ = atarg# / prob
+        surr1 = ratio * new_targ  # surrogate from conservative policy iteration
+        surr2 = tf.clip_by_value(ratio, 1.0 - clip_param, 1.0 + clip_param) * new_targ  #
         pol_surr = - tf.reduce_mean(tf.minimum(surr1, surr2))  # PPO's pessimistic surrogate (L^CLIP)
+        # pol_surr = tf.reduce_mean(pi.pd.logp(ac) * atarg)
         vf_loss = tf.reduce_mean(tf.square(pi.vpred - ret))
         total_loss = pol_surr + pol_entpen + vf_loss
         losses = [pol_surr, pol_entpen, vf_loss, meankl, meanent]
         loss_names = ["pol_surr", "pol_entpen", "vf_loss", "kl", "ent"]
 
         var_list = pi.get_trainable_variables()
-        lossandgrad = U.function([ob, ac, atarg, ret, lrmult], losses + [U.flatgrad(total_loss, var_list)])
+        lossandgrad = U.function([ob, ac, atarg, prob, ret, lrmult], losses + [U.flatgrad(total_loss, var_list)])
         adam = MpiAdam(var_list, epsilon=adam_epsilon)
+        # adam =
 
         assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)
                                                         for (oldv, newv) in
                                                         zipsame(oldpi.get_variables(), pi.get_variables())])
-        compute_losses = U.function([ob, ac, atarg, ret, lrmult], losses)
+        compute_losses = U.function([ob, ac, atarg, prob, ret, lrmult], losses)
 
         U.initialize()
         adam.sync()
@@ -160,7 +164,8 @@ class PPOAgent(BaseAgent):
 
                 # ob, ac, atarg, ret, td1ret = map(np.concatenate, (obs, acs, atargs, rets, td1rets))
                 # logger.log(seg["rew"])
-                ob, ac, atarg, tdlamret = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"]
+                ob, ac, atarg, tdlamret, prob = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"], seg["prob"]
+                # print(prob)
                 # logger.log(atarg)
                 vpredbefore = seg["vpred"]  # predicted value function before udpate
                 # if atarg.std() > 1e-4:
@@ -169,7 +174,7 @@ class PPOAgent(BaseAgent):
                 #     print(atarg.mean())
                 #     atarg = (atarg - atarg.mean())
                     # print(atarg)
-                d = Dataset(dict(ob=ob, ac=ac, atarg=atarg, vtarg=tdlamret), deterministic=pi.recurrent)
+                d = Dataset(dict(ob=ob, ac=ac, atarg=atarg, vtarg=tdlamret, prob=prob), deterministic=pi.recurrent)
                 optim_batchsize = ob.shape[0]
                 # print("optim_batchsize:", optim_batchsize)
 
@@ -246,8 +251,9 @@ class PPOAgent(BaseAgent):
                 for _ in range(optim_epochs):
                     losses = []  # list of tuples, each of which gives the loss for a minibatch
                     for batch in d.iterate_once(optim_batchsize):
-                        *newlosses, g = lossandgrad(batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"],
-                                                    cur_lrmult)
+                        # print(batch["prob"])
+                        *newlosses, g = lossandgrad(batch["ob"], batch["ac"], batch["atarg"], batch["prob"],
+                                                    batch["vtarg"], cur_lrmult)
                         adam.update(g, optim_stepsize * cur_lrmult)
                     #     losses.append(newlosses)
                     # logger.log(fmt_row(13, np.mean(losses, axis=0)))
@@ -255,7 +261,8 @@ class PPOAgent(BaseAgent):
                 # logger.log("Evaluating losses...")
                 losses = []
                 for batch in d.iterate_once(optim_batchsize):
-                    newlosses = compute_losses(batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
+                    newlosses = compute_losses(batch["ob"], batch["ac"], batch["atarg"], batch["prob"], batch["vtarg"],
+                                               cur_lrmult)
                     # print(newlosses)
                     losses.append(newlosses)
                 meanlosses, _, _ = mpi_moments(losses, axis=0)
@@ -298,7 +305,8 @@ class PPOAgent(BaseAgent):
         t = 0
         ac = env.action_space.sample()  # not used, just so we have the datatype
         new = True  # marks if we're on first timestep of an episode
-        ob = env.reset()
+        ob, prob = env.reset()
+        # print(ob, prob)
 
         cur_ep_ret = 0  # return in current episode
         cur_ep_len = 0  # len of current episode
@@ -312,6 +320,7 @@ class PPOAgent(BaseAgent):
         news = np.zeros(horizon, 'int32')
         acs = np.array([ac for _ in range(horizon)])
         prevacs = acs.copy()
+        probs = np.zeros(horizon, 'float32')
 
         while True:
             prevac = ac
@@ -319,9 +328,12 @@ class PPOAgent(BaseAgent):
                 ac, vpred = pi.act_with_explore(stochastic, ob, self.exploration)
             elif self.exploration is None:
                 # ac, vpred = pi.act_with_explore(stochastic, ob, .1)
+                # print(ob)
                 ac, vpred = pi.act(stochastic, ob)
             else:
                 raise NotImplementedError
+
+            my_prob = pi.prob(ob, ac)
 
             # Slight weirdness here because we need value function at time T
             # before returning segment [0, T-1] so we get the correct
@@ -333,7 +345,7 @@ class PPOAgent(BaseAgent):
                 # print(vpreds)
                 yield {"ob": obs, "rew": rews, "vpred": vpreds, "new": news,
                        "ac": acs, "prevac": prevacs, "nextvpred": vpred * (1 - new),
-                       "ep_rets": ep_rets, "ep_lens": ep_lens}
+                       "ep_rets": ep_rets, "ep_lens": ep_lens, "prob": probs}
                 # Be careful!!! if you change the downstream algorithm to aggregate
                 # several of these batches, then be sure to do a deepcopy
                 ep_rets = []
@@ -344,8 +356,10 @@ class PPOAgent(BaseAgent):
             news[i] = new
             acs[i] = ac
             prevacs[i] = prevac
+            probs[i] = prob
 
-            ob, rew, _, new = env.step(ac)
+            ob, rew, _, new, prob = env.step(ac, my_prob)
+            # print("1", ob, prob)
             # print(new)
             rews[i] = rew
 
@@ -356,7 +370,7 @@ class PPOAgent(BaseAgent):
                 ep_lens.append(cur_ep_len)
                 cur_ep_ret = 0
                 cur_ep_len = 0
-                ob = env.reset()
+                ob, prob = env.reset()
             t += 1
 
     @staticmethod

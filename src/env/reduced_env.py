@@ -8,11 +8,15 @@ class ReducedEnv(BaseEnvWrapper):
         self.unfixed_indices = set(range(base_env.num_agents)) - self.fixed_indices
         self.is_single = len(self.unfixed_indices) == 1 and allow_single
         self.single_index = list(self.unfixed_indices)[0] if self.is_single else None
+        self.original_num_agents = base_env.original_num_agents
         super().__init__(base_env,
                          num_agents=len(self.unfixed_indices),
                          observation_spaces=self.choose_unfixed(base_env.observation_spaces),
                          action_spaces=self.choose_unfixed(base_env.action_spaces))
         self.fixed_obs = []
+
+    def original_num_agents(self):
+        return self.original_num_agents
 
     @property
     def observation_space(self):
@@ -60,14 +64,18 @@ class ReducedEnv(BaseEnvWrapper):
 
     def reset(self, debug=False):
         # print("ASd")
-        obs = self.base_env.reset(debug)
+        obs, probs = self.base_env.reset(debug)
         self.fixed_obs = self.choose_fixed(obs)
-        return self.choose_unfixed_single(obs)
+        return self.choose_unfixed_single(obs), self.choose_unfixed_single(probs)
 
-    def step(self, actions):
-        fixed_actions = [self.fixed_policies[i].act_clean(self.fixed_obs[i]) for i in range(len(self.fixed_policies))]
-        ret = super().step(self.merge_single(fixed_actions, actions))
+    def step(self, actions, action_probs):
+        fixed_ap = [self.fixed_policies[i].act_with_prob(self.fixed_obs[i]) for i in range(len(self.fixed_policies))]
+        fixed_actions, fixed_probs = zip(*fixed_ap)
+        fixed_actions, fixed_probs = list(fixed_actions), list(fixed_probs)
+        ret = super().step(self.merge_single(fixed_actions, actions), self.merge_single(fixed_probs, action_probs))
         # print(ret)
-        obs, rews, infos, done = ret
+        obs, rews, infos, done, probs = ret
+        # print(probs)
         self.fixed_obs = self.choose_fixed(obs)
-        return self.choose_unfixed_single(obs), self.choose_unfixed_single(rews), self.choose_unfixed_single(infos), done
+        return self.choose_unfixed_single(obs), self.choose_unfixed_single(rews), self.choose_unfixed_single(infos), \
+               done, self.choose_unfixed_single(probs)

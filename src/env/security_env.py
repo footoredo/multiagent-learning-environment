@@ -113,7 +113,7 @@ class GambitSolver:
 
 
 class SecurityEnv(BaseEnv):
-    def __init__(self, n_slots, n_types, prior, n_rounds, value_range=10., zero_sum=False, seed=None, record_def=False, export_gambit=False):
+    def __init__(self, n_slots, n_types, prior, n_rounds, value_low=5., value_high=10., zero_sum=False, seed=None, record_def=False, export_gambit=False):
         self.n_slots = n_slots
         self.n_types = n_types
         self.prior = prior if prior is not None else np.random.rand(n_types)
@@ -137,6 +137,7 @@ class SecurityEnv(BaseEnv):
         self.ac_history = None
         self.atk_type = None
         self.type_ob = None
+        self.probs = None
 
         if seed == "benchmark":
             assert n_slots == 2 and n_rounds == 1 and n_types == 2
@@ -147,10 +148,11 @@ class SecurityEnv(BaseEnv):
         else:
             if seed is not None:
                 np.random.seed(seed)
-            self.atk_rew = np.random.rand(n_types, n_slots) * value_range
-            self.atk_pen = -np.random.rand(n_types, n_slots) * value_range
-            self.dfd_rew = np.random.rand(n_slots) * value_range
-            self.dfd_pen = -np.random.rand(n_slots) * value_range
+            value_range = value_high - value_low
+            self.atk_rew = np.random.rand(n_types, n_slots) * value_range + value_low
+            self.atk_pen = -np.random.rand(n_types, n_slots) * value_range - value_low
+            self.dfd_rew = np.random.rand(n_slots) * value_range + value_low
+            self.dfd_pen = -np.random.rand(n_slots) * value_range - value_low
 
         self.payoff = np.zeros((n_types, n_slots, n_slots, 2), dtype=np.float32)
         for t in range(n_types):
@@ -308,9 +310,11 @@ class SecurityEnv(BaseEnv):
         self.atk_type = np.random.choice(self.n_types, p=self.prior)
         self.type_ob = np.zeros(shape=self.n_types, dtype=np.float32)
         self.type_ob[self.atk_type] = 1.
-        return self._get_ob()
+        self.probs = np.ones(shape=self.num_agents, dtype=np.float32)
+        self.probs[0] *= self.prior[self.atk_type]
+        return self._get_ob(), self.probs
 
-    def step(self, actions):
+    def step(self, actions, action_probs):
         # if actions[0] == actions[1]:
         #     atk_rew = self.atk_pen[self.atk_type][actions[0]]
         #     dfd_rew = self.dfd_rew[actions[1]]
@@ -335,8 +339,13 @@ class SecurityEnv(BaseEnv):
                 self.ac_history[self.rounds_so_far][actions[0]] = 1.
 
         self.rounds_so_far += 1
+        # self.probs[0] *= action_probs[0]
+        # self.probs[1] *= action_probs[0]
+        self.probs[0] *= .5
+        self.probs[1] *= .5
 
-        return self._get_ob(), [atk_rew, dfd_rew], [self.atk_type, self.atk_type], self.rounds_so_far >= self.n_rounds
+        return self._get_ob(), [atk_rew, dfd_rew], [self.atk_type, self.atk_type], self.rounds_so_far >= self.n_rounds,\
+               self.probs
 
     def encode_history(self, history):
         if self.record_def:

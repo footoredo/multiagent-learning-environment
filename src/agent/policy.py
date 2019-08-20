@@ -10,6 +10,11 @@ class Policy(object):
         action = self.act_fn(obs)
         return action
 
+    def act_with_prob(self, obs):
+        action = self.act_fn(obs)
+        prob = self.prob_fn(obs, action)
+        return action, prob
+
     def act_clean(self, obs):
         action = self.act_fn(obs)
         if isinstance(action, tuple):

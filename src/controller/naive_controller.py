@@ -278,7 +278,7 @@ class NaiveController(BaseController):
         # print("ASd")
         test_env.reset()
         for step in range(max_steps):
-            _, _, _, done = test_env.step([])
+            _, _, _, done, _ = test_env.step([], [])
             if done:
                 test_env.reset()
 

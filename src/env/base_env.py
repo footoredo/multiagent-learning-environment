@@ -42,6 +42,9 @@ class BaseEnv(ABC):
     def assess_strategies(self, strategies, debug=False):
         raise NotImplementedError
 
+    def original_num_agents(self):
+        return self.num_agents
+
     @abstractmethod
     def reset(self, verbose=False):
         """
@@ -51,7 +54,7 @@ class BaseEnv(ABC):
         pass
 
     @abstractmethod
-    def step(self, actions):
+    def step(self, actions, action_probs):
         """
         Returns (obs, rews, infos, done):
          - obs: an array of observations, or a dict of
@@ -74,5 +77,6 @@ class BaseEnvWrapper(BaseEnv):
     def reset(self, debug=False):
         pass
 
-    def step(self, actions):
-        return self.base_env.step(actions)
+    def step(self, actions, probs):
+        # print(self.base_env)
+        return self.base_env.step(actions, probs)

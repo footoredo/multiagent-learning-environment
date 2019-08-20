@@ -140,7 +140,7 @@ class Statistics(object):
         print("Total steps: {}".format(self.tot_steps))
         for i in range(self.n_agents):
             print("\nAgent {}".format(i))
-            for eob, ob in self.ob_maps[i].items():
+            for eob, ob in sorted(self.ob_maps[i].items()):
                 print(self.ob_namers[i](ob), end='\t')
                 print("pi: {0:.2%}".format(self.visit_count[i][eob] / self.tot_games), end='\t')
                 print("visit: {}".format(self.visit_count[i][eob]), end='\t')
