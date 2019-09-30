@@ -7,8 +7,8 @@ from common.path_utils import *
 import joblib
 import numpy as np
 
-exp_name = "security_ppo_seed:5410_game:3-2-2-0.5:0.5_gs_no-reset_5e-6_constant_latest_test_every:10_test_steps:1000_network:256-4_train:4*10"
-step = 4000
+exp_name = "security_ppo_seed:5410_game:3-2-5-0.5:0.5_gs_no-reset_5e-6_constant_latest_test_every:10_test_steps:1000_network:256-4_train:10*20"
+step = 20000
 exp_dir = join_path("../result", exp_name)
 step_dir = join_path(exp_dir, "step-{}".format(step))
 env = import_security_env(join_path(exp_dir, "env_settings.obj"))
