@@ -50,6 +50,7 @@ def parse_args():
     parser.add_argument('--opponent', type=str, nargs="+", default="latest")
     parser.add_argument('--test-every', type=int, default=10)
     parser.add_argument('--save-every', type=int)
+    parser.add_argument('--reset-every', type=int)
     parser.add_argument('--load', action="store_true")
     parser.add_argument('--load-step', type=int)
     parser.add_argument('--max-steps', type=int, default=10000)
@@ -105,7 +106,7 @@ exp_name = "_".join(["security",
 exp_dir = os.path.join(result_folder, exp_name)
 
 
-def get_make_ppo_agent(timesteps_per_actorbatch, max_iterations):
+def get_make_ppo_agent(reset_every, timesteps_per_actorbatch, max_iterations):
     def make_ppo_agent(observation_space, action_space, handlers):
         def policy(name, agent_name, ob_space, ac_space):
             # return MLPPolicy(name=name, agent_name=agent_name, ob_space=ob_space, ac_space=ac_space,
@@ -118,7 +119,7 @@ def get_make_ppo_agent(timesteps_per_actorbatch, max_iterations):
                          ob_space=observation_space, ac_space=action_space, handlers=handlers,
                          timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0,
                          optim_epochs=1, optim_stepsize=learning_rate,
-                         gamma=0.99, lam=0.95, max_iters=max_iterations,
+                         gamma=0.99, lam=0.95, reset_every=reset_every, max_iters=max_iterations,
                          schedule=schedule, opponent=opponent)
         ppo_agent_cnt += 1
         return agent
@@ -187,6 +188,7 @@ if __name__ == "__main__":
     network_depth = args.network_depth
     timesteps_per_batch = args.timesteps_per_batch
     iterations_per_round = args.iterations_per_round
+    reset_every = args.reset_every
     # other = "1000-test-steps-large-network"
 
     result_folder = "../result/"
@@ -203,6 +205,7 @@ if __name__ == "__main__":
                   ":".join(list(map(str, opponent))) if type(opponent) == tuple else opponent,
                   "test_every:{}".format(test_every),
                   "test_steps:{}".format(test_steps),
+                  "reset_every:{}".format(reset_every),
                   "network:{}-{}".format(network_width, network_depth),
                   "train:{}*{}".format(timesteps_per_batch, iterations_per_round)])
     # exp_name = "security_seed:5410_2-2-2_gs_no-reset_5e-6_wolf_adv:20.0_1:1_latest_10"
@@ -247,8 +250,8 @@ if __name__ == "__main__":
             if train:
                 # test_every = 1
                 if agent == "ppo":
-                    agents = [get_make_ppo_agent(timesteps_per_batch, iterations_per_round),
-                              get_make_ppo_agent(timesteps_per_batch, iterations_per_round)]
+                    agents = [get_make_ppo_agent(reset_every, timesteps_per_batch, iterations_per_round),
+                              get_make_ppo_agent(reset_every, timesteps_per_batch, iterations_per_round)]
                 elif agent == "pac":
                     agents = [get_make_pac_agent(timesteps_per_batch, iterations_per_round),
                               get_make_pac_agent(timesteps_per_batch, iterations_per_round)]

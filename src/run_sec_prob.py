@@ -4,7 +4,7 @@ from controller.naive_controller import NaiveController
 from agent.dummy_agent import DummyAgent
 from agent.infant_agent import InfantAgent
 from agent.self_play_agent import SelfPlayAgent
-from agent.ppo_agent import PPOAgent
+from agent.ppo_agent_backup import PPOAgent
 from agent.mlp_policy import MLPPolicy
 import seaborn as sns
 import pandas as pd

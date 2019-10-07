@@ -42,7 +42,6 @@ class PPOAgent(BaseAgent):
               clip_param, entcoeff,  # clipping parameter epsilon, entropy coeff
               optim_epochs, optim_stepsize,  # optimization hypers
               gamma, lam,  # advantage estimation
-              reset_every,
               max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
               callback=None,  # you can do anything in the callback, since it takes locals(), globals()
               adam_epsilon=1e-5,
@@ -73,9 +72,7 @@ class PPOAgent(BaseAgent):
         self.ac_space = ac_space
         self.push, self.pull = handlers
         self.exploration = exploration
-        self.reset_every = reset_every
         pi = policy_fn("pi", self.name, ob_space, ac_space)  # Construct network for new policy
-        avg_pi = policy_fn("avg_pi", self.name, ob_space, ac_space)  # Construct network for new policy
         oldpi = policy_fn("oldpi", self.name, ob_space, ac_space)  # Network for old policy
         atarg = tf.placeholder(dtype=tf.float32, shape=[None])  # Target advantage function (if applicable)
         prob = tf.placeholder(dtype=tf.float32, shape=[None])  # Visiting probability
@@ -109,25 +106,13 @@ class PPOAgent(BaseAgent):
         adam = MpiAdam(var_list, epsilon=adam_epsilon)
         # adam =
 
-        avg_loss = tf.reduce_mean(-avg_pi.pd.logp(ac))
-        avg_var_list = avg_pi.get_trainable_variables()
-        avg_lossandgrad = U.function([ob, ac], [avg_loss, U.flatgrad(avg_loss, avg_var_list)])
-        avg_adam = MpiAdam(avg_var_list, epsilon=adam_epsilon)
-
         assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)
                                                         for (oldv, newv) in
                                                         zipsame(oldpi.get_variables(), pi.get_variables())])
-        assign_new_eq_avg = U.function([], [], updates=[tf.assign(newv, avgv)
-                                                        for (newv, avgv) in
-                                                        zipsame(pi.get_variables(), avg_pi.get_variables())])
         compute_losses = U.function([ob, ac, atarg, prob, ret, lrmult], losses)
-        avg_compute_losses = U.function([ob, ac], [avg_loss])
 
         U.initialize()
         adam.sync()
-        avg_adam.sync()
-
-        assign_new_eq_avg()
 
         self.gamma = gamma
         self.lam = lam
@@ -269,9 +254,7 @@ class PPOAgent(BaseAgent):
                         # print(batch["prob"])
                         *newlosses, g = lossandgrad(batch["ob"], batch["ac"], batch["atarg"], batch["prob"],
                                                     batch["vtarg"], cur_lrmult)
-                        _, avg_g = avg_lossandgrad(batch["ob"], batch["ac"])
                         adam.update(g, optim_stepsize * cur_lrmult)
-                        avg_adam.update(avg_g, 1e-5)
                     #     losses.append(newlosses)
                     # logger.log(fmt_row(13, np.mean(losses, axis=0)))
 
@@ -303,9 +286,6 @@ class PPOAgent(BaseAgent):
                 # logger.record_tabular("TimeElapsed", time.time() - tstart)
                 # if MPI.COMM_WORLD.Get_rank() == 0:
                 #     logger.dump_tabular()
-
-                if ep_i > 0 and ep_i % reset_every == 0:
-                    assign_new_eq_avg()
 
             # print(time.time() - tstart)
             self.push(self._get_policy())
@@ -445,10 +425,7 @@ class PPOAgent(BaseAgent):
         def prob_fn(ob, ac):
             return self.curpi.prob(ob, ac)
 
-        def strategy(ob):
-            return self.curpi.strategy(ob)
-
-        return Policy(act_fn, prob_fn, strategy)
+        return Policy(act_fn, prob_fn)
 
     def get_initial_policy(self):
         return self._get_policy()

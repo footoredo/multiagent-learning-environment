@@ -2,9 +2,10 @@ import random
 
 
 class Policy(object):
-    def __init__(self, act_fn, prob_fn=None):
+    def __init__(self, act_fn, prob_fn=None, strategy_fn=None):
         self.act_fn = act_fn
         self.prob_fn = prob_fn
+        self.strategy_fn = strategy_fn
 
     def act(self, obs):
         action = self.act_fn(obs)

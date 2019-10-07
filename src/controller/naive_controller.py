@@ -169,7 +169,9 @@ class NaiveController(BaseController):
                 global_results.append(global_result)
                 if record_assessment:
                     # rews = self.run_benchmark(1000)
-                    assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
+                    # assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
+                    #                                          for i in range(self.num_agents)])
+                    assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
                                                              for i in range(self.num_agents)])
                     # for i in range(self.num_agents):
                     #     assessment.append(self.env.assess_strategy(i, self.statistics.get_avg_strategy(i)))
