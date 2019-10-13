@@ -109,6 +109,7 @@ class NaiveController(BaseController):
         env = self.env
         self.agents = [agent_fn(observation_space=env.get_observation_space(i),
                                 action_space=env.get_action_space(i),
+                                steps_per_round=env.n_rounds,
                                 handlers=self.get_handlers(i))
                        for i, agent_fn in enumerate(self.agent_fns)]
         for agent in self.agents:
@@ -147,6 +148,8 @@ class NaiveController(BaseController):
 
         last_time = time.time()
         while self.step < max_steps:
+            self.step += 1
+            assert(len(self.push_list) == 0)
             for i, policy in self.push_list:
                 self._push_policy(i, policy)
             for i, agent in enumerate(self.agents):
@@ -155,8 +158,6 @@ class NaiveController(BaseController):
                     if sec_prob:
                         env.update_attacker_policy(self.get_policy_with_version(self.policies[0], version="latest"))
                     train_info[i].append(agent.train(i, self.statistics, self.step / max_steps, self.step))
-
-            self.step += 1
 
             if reset and self.step / max_steps > .3:
                 self.statistics.reset()
@@ -169,10 +170,12 @@ class NaiveController(BaseController):
                 global_results.append(global_result)
                 if record_assessment:
                     # rews = self.run_benchmark(1000)
-                    # assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
-                    #                                          for i in range(self.num_agents)])
-                    assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
+                    assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
                                                              for i in range(self.num_agents)])
+                    # assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
+                    #                                          for i in range(self.num_agents)])
+                    # assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
+                    #                                          for i in range(self.num_agents)])
                     # for i in range(self.num_agents):
                     #     assessment.append(self.env.assess_strategy(i, self.statistics.get_avg_strategy(i)))
                     # exp[0] += 0.633

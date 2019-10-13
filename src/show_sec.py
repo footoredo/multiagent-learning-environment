@@ -110,7 +110,7 @@ def show_result(exp_name):
     res = joblib.load(join_path(exp_dir, "result.obj"))
 
     l = len(res["episode"])
-    for i in range(l - 4, l):
+    for i in range(l - 8, l):
         print(res["episode"][i], res["assessment"][i], res["player"][i])
 
     # res = merge_exploitability(res)
@@ -133,6 +133,6 @@ if __name__ == "__main__":
     # exp_name = "security_ppo_seed:5410_game:2-2-2-0.5:0.5_gs_no-reset_5e-6_wolf_adv:20.0_latest_test_every:5_test_steps:1000_network:256-4_train:4*10"
     # exp_name = "security_seed:5410_game:3-2-2-0.5:0.5_gs_no-reset_5e-6_constant_latest_test_every:10_test_steps:1000_network:256-4_train:20*5"
     # exp_name = "security_ppo_seed:5410_game:3-2-2-0.5:0.5_gs_no-reset_5e-6_constant_latest_test_every:10_test_steps:1000_network:256-4_train:4*10"
-    exp_name = "security_ppo_seed:5410_game:5-2-5-0.5:0.5_gs_no-reset_5e-6_constant_latest_test_every:10_test_steps:1000_network:256-4_train:10*20"
+    exp_name = 'security_ppo_seed:5410_game:2-2-2-0.5:0.5_gs_no-reset_5e-6_constant_latest_test_every:10_test_steps:1000_reset_every:4000_network:256-4_train:4*10'
     show_result(exp_name)
-    # show_local_result(exp_name)
+    show_local_result(exp_name)

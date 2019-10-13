@@ -123,10 +123,20 @@ class SecurityEnv(BaseEnv):
         self.seed = seed
         self.record_def = record_def
 
-        self.ob_shape = (n_rounds - 1, 2, n_slots + 1) if record_def else (n_rounds - 1, n_slots + 1)
-        self.ob_len = np.prod(self.ob_shape)
-        atk_ob_space = spaces.Box(low=0., high=1., shape=[n_types + self.ob_len])
-        dfd_ob_space = spaces.Box(low=0., high=1., shape=[1 + self.ob_len])
+        # self.ob_shape = (n_rounds - 1, 2, n_slots + 1) if record_def else (n_rounds - 1, n_slots + 1)
+        # self.ob_len = np.prod(self.ob_shape)
+
+        atk_init_ob_space = spaces.Box(low=0., high=1., shape=[n_types * 2])
+        dfd_init_ob_space = spaces.Box(low=0., high=1., shape=[n_types])
+
+        atk_info_ob_space = spaces.Box(low=0., high=1., shape=[1 + n_slots])
+        dfd_info_ob_space = spaces.Box(low=0., high=1., shape=[1 + n_slots])
+
+        atk_ob_space = (atk_init_ob_space, atk_info_ob_space)
+        dfd_ob_space = (dfd_init_ob_space, dfd_info_ob_space)
+
+        # atk_ob_space = spaces.Box(low=0., high=1., shape=[n_types + self.ob_len])
+        # dfd_ob_space = spaces.Box(low=0., high=1., shape=[1 + self.ob_len])
         # print(dfd_ob_space)
         ac_space = spaces.Discrete(n_slots)
         super().__init__(num_agents=2,
@@ -243,70 +253,77 @@ class SecurityEnv(BaseEnv):
     #     optim = np.argmax(v)
     #     return 1. - p0[optim]
 
-    def _get_base_ob(self):
-        return self.ac_history.reshape(-1)
+    def _get_atk_init_ob(self):
+        return np.concatenate([self.prior, self.type_ob])
 
-    def _get_dfd_ob(self, base_ob):
-        return np.concatenate(([0.], base_ob))
+    def _get_dfd_init_ob(self):
+        return self.prior
 
-    def _get_atk_ob(self, base_ob):
-        return np.concatenate((self.type_ob, base_ob))
+    def _get_init_ob(self):
+        return [self._get_atk_init_ob(), self._get_dfd_init_ob()]
+
+    def _get_info_ob(self):
+        return np.concatenate(([np.concatenate(([self.n_rounds], np.zeros(self.n_slots)))], self.ac_history[:self.rounds_so_far]))
 
     def _get_ob(self):
-        base_ob = self._get_base_ob()
-        return [self._get_atk_ob(base_ob), self._get_dfd_ob(base_ob)]
+        return [(self._get_atk_init_ob(), self._get_info_ob()), (self._get_dfd_init_ob(), self._get_info_ob())]
 
     def get_ob_namers(self):
-        def get_history_name(ob):
+        def get_history_name(info_ob):
             if self.record_def:
-                if ob.shape[0] > 0:
-                    if ob[self.n_slots] < .5:
-                        ac0 = self.n_slots
-                        for i in range(self.n_slots):
-                            if ob[i] > .5:
-                                ac0 = i
-                                break
-                        ac1 = self.n_slots
-                        for i in range(self.n_slots):
-                            if ob[i + self.n_slots + 1] > .5:
-                                ac1 = i
-                                break
-                        return ":({},{})".format(ac0, ac1) + get_history_name(ob[2 * (self.n_slots + 1):])
-                return ""
+                raise NotImplementedError
+                # if ob.shape[0] > 0:
+                #     if ob[self.n_slots] < .5:
+                #         ac0 = self.n_slots
+                #         for i in range(self.n_slots):
+                #             if ob[i] > .5:
+                #                 ac0 = i
+                #                 break
+                #         ac1 = self.n_slots
+                #         for i in range(self.n_slots):
+                #             if ob[i + self.n_slots + 1] > .5:
+                #                 ac1 = i
+                #                 break
+                #         return ":({},{})".format(ac0, ac1) + get_history_name(ob[2 * (self.n_slots + 1):])
+                # return ""
             else:
-                if ob.shape[0] > 0:
-                    if ob[self.n_slots] < .5:
-                        ac0 = self.n_slots
-                        for i in range(self.n_slots):
-                            if ob[i] > .5:
-                                ac0 = i
-                                break
-                        return ":{}".format(ac0) + get_history_name(ob[(self.n_slots + 1):])
+                if info_ob.shape[0] > 0:
+                    ac0 = self.n_slots
+                    for i in range(self.n_slots):
+                        if info_ob[0][i + 1] > .5:
+                            ac0 = i
+                            break
+                    return ":{}".format(ac0) + get_history_name(info_ob[1:])
                 return ""
 
         def atk_ob_namer(ob):
+            init_ob, info_ob = ob
             name = ""
             for i in range(self.n_types):
-                if ob[i] > .5:
+                if init_ob[i + self.n_types] > .5:
                     name = str(i)
                     break
-            return name + get_history_name(ob[self.n_types:])
+            return name + get_history_name(info_ob)
 
         def dfd_ob_namer(ob):
-            return "?" + get_history_name(ob[1:])
+            init_ob, info_ob = ob
+            return "?" + get_history_name(info_ob)
 
         return [atk_ob_namer, dfd_ob_namer]
 
     def reset(self, debug=False):
         self.rounds_so_far = 0
-        self.ac_history = np.zeros(shape=self.ob_shape, dtype=np.float32)
-        if self.record_def:
-            for r in range(self.n_rounds - 1):
-                for p in range(2):
-                    self.ac_history[r][p][self.n_slots] = 1.
-        else:
-            for r in range(self.n_rounds - 1):
-                self.ac_history[r][self.n_slots] = 1.
+        self.ac_history = np.zeros(shape=[self.n_rounds - 1, 1 + self.n_slots], dtype=np.float32)
+        for i in range(self.n_rounds - 1):
+            self.ac_history[i][0] = self.n_rounds - i - 1
+        # if self.record_def:
+        #     # for r in range(self.n_rounds - 1):
+        #     #     for p in range(2):
+        #     #         self.ac_history[r][p][self.n_slots] = 1.
+        #     raise NotImplementedError
+        # else:
+        #     for r in range(self.n_rounds - 1):
+        #         self.ac_history[r][self.n_slots] = 1.
         self.atk_type = np.random.choice(self.n_types, p=self.prior)
         self.type_ob = np.zeros(shape=self.n_types, dtype=np.float32)
         self.type_ob[self.atk_type] = 1.
@@ -330,13 +347,14 @@ class SecurityEnv(BaseEnv):
 
         if self.rounds_so_far < self.n_rounds - 1:
             if self.record_def:
-                self.ac_history[self.rounds_so_far][0][self.n_slots] = 0.
-                self.ac_history[self.rounds_so_far][0][actions[0]] = 1.
-                self.ac_history[self.rounds_so_far][1][self.n_slots] = 0.
-                self.ac_history[self.rounds_so_far][1][actions[1]] = 1.
+                # self.ac_history[self.rounds_so_far][0][self.n_slots] = 0.
+                # self.ac_history[self.rounds_so_far][0][actions[0]] = 1.
+                # self.ac_history[self.rounds_so_far][1][self.n_slots] = 0.
+                # self.ac_history[self.rounds_so_far][1][actions[1]] = 1.
+                raise NotImplementedError
             else:
-                self.ac_history[self.rounds_so_far][self.n_slots] = 0.
-                self.ac_history[self.rounds_so_far][actions[0]] = 1.
+                # self.ac_history[self.rounds_so_far][self.n_slots] = 0.
+                self.ac_history[self.rounds_so_far][actions[0] + 1] = 1.
 
         self.rounds_so_far += 1
         # self.probs[0] *= action_probs[0]
@@ -346,6 +364,16 @@ class SecurityEnv(BaseEnv):
 
         return self._get_ob(), [atk_rew, dfd_rew], [self.atk_type, self.atk_type], self.rounds_so_far >= self.n_rounds,\
                self.probs
+
+    def get_ob_encoders(self):
+        def atk_ob_encoder(ob):
+            init_ob, info_ob = ob
+            return hash(tuple(init_ob[self.n_types:].astype(int).tolist() + np.array(info_ob).flatten().astype(int).tolist()))
+
+        def dfd_ob_encoder(ob):
+            init_ob, info_ob = ob
+            return hash(tuple(np.array(info_ob).flatten().astype(int).tolist()))
+        return [atk_ob_encoder, dfd_ob_encoder]
 
     def encode_history(self, history):
         if self.record_def:
@@ -417,55 +445,32 @@ class SecurityEnv(BaseEnv):
     def get_atk_payoff(self, t, atk_ac, def_ac):
         return self.payoff[t, atk_ac, def_ac, 0]
 
-    def _convert_to_type_ob(self, t):
+    def convert_to_atk_init_ob(self, t, prior=None):
         ob = np.zeros(shape=self.n_types)
         ob[t] = 1.0
-        return ob
+        if prior is None:
+            prior = self.prior
+        return np.concatenate([prior, ob])
 
-    def convert_to_atk_ob(self, history, t):
-        if self.record_def:
-            ob = np.zeros(shape=(self.n_rounds - 1, 2, self.n_slots + 1))
-        else:
-            ob = np.zeros(shape=(self.n_rounds - 1, self.n_slots + 1))
+    def convert_to_def_init_ob(self, prior=None):
+        if prior is None:
+            prior = self.prior
+        return prior
+
+    def convert_to_info_ob(self, history):
         r = len(history)
+        if self.record_def:
+            raise NotImplementedError
+        else:
+            ob = np.zeros(shape=(r, 1 + self.n_slots))
         # print(r)
         for i in range(r):
+            ob[i][0] = self.n_rounds - i
             if self.record_def:
-                ob[i][0][history[i][0]] = 1.0
-                ob[i][1][history[i][1]] = 1.0
+                raise NotImplementedError
             else:
-                ob[i][history[i]] = 1.0
+                ob[i][history[i] + 1] = 1.0
 
-        for i in range(r, self.n_rounds - 1):
-            if self.record_def:
-                ob[i][0][self.n_slots] = 1.0
-                ob[i][1][self.n_slots] = 1.0
-            else:
-                ob[i][self.n_slots] = 1.0
-        ob = np.concatenate([self._convert_to_type_ob(t), ob.reshape(-1)])
-        return ob
-
-    def convert_to_def_ob(self, history):
-        if self.record_def:
-            ob = np.zeros(shape=(self.n_rounds - 1, 2, self.n_slots + 1))
-        else:
-            ob = np.zeros(shape=(self.n_rounds - 1, self.n_slots + 1))
-        r = len(history)
-        # print(r)
-        for i in range(r):
-            if self.record_def:
-                ob[i][0][history[i][0]] = 1.0
-                ob[i][1][history[i][1]] = 1.0
-            else:
-                ob[i][history[i]] = 1.0
-
-        for i in range(r, self.n_rounds - 1):
-            if self.record_def:
-                ob[i][0][self.n_slots] = 1.0
-                ob[i][1][self.n_slots] = 1.0
-            else:
-                ob[i][self.n_slots] = 1.0
-        ob = np.concatenate([[0.], ob.reshape(-1)])
         return ob
 
     # def assess_strategies(self, strategies):
@@ -483,7 +488,8 @@ class SecurityEnv(BaseEnv):
             self.record_def = env.record_def
 
             self._get_def_payoff = env.get_def_payoff
-            self._convert_to_atk_ob = env.convert_to_atk_ob
+            self._convert_to_atk_init_ob = env.convert_to_atk_init_ob
+            self._convert_to_info_ob = env.convert_to_info_ob
             self._encode_history = env.encode_history
 
         def _reset(self):
@@ -497,9 +503,10 @@ class SecurityEnv(BaseEnv):
                 return self.cache[encoded]
             else:
                 atk_strategy_type = np.zeros(shape=(self.n_slots, self.n_types))
+                info_ob = self._convert_to_info_ob(history)
                 for t in range(self.n_types):
-                    atk_ob = self._convert_to_atk_ob(history, t)
-                    atk_strategy = self.strategy(atk_ob)
+                    init_ob = self._convert_to_atk_init_ob(t, self.prior)
+                    atk_strategy = self.strategy((init_ob, info_ob))
                     for i in range(self.n_slots):
                         atk_strategy_type[i][t] += atk_strategy[i] * prior[t]
 
@@ -526,6 +533,7 @@ class SecurityEnv(BaseEnv):
         def run(self, attacker_strategy):
             self._reset()
             self.strategy = attacker_strategy
+            # self.init_ob = self._convert_to_def_init_ob()
             self._recursive([], self.prior)
             return self.cache
 
@@ -541,8 +549,10 @@ class SecurityEnv(BaseEnv):
             self.record_def = env.record_def
 
             self._get_atk_payoff = env.get_atk_payoff
-            self._convert_to_def_ob = env.convert_to_def_ob
+            self._convert_to_def_init_ob = env.convert_to_def_init_ob
+            self._convert_to_info_ob = env.convert_to_info_ob
             self._encode_history = env.encode_history
+            self.init_ob = self._convert_to_def_init_ob(self.prior)
 
         def _reset(self):
             self.cache = dict()
@@ -554,8 +564,8 @@ class SecurityEnv(BaseEnv):
             if encoded in self.cache:
                 return self.cache[encoded]
             else:
-                def_ob = self._convert_to_def_ob(history)
-                def_strategy = self.strategy(def_ob)
+                def_ob = self._convert_to_info_ob(history)
+                def_strategy = self.strategy((self.init_ob, def_ob))
 
                 max_ret = -1e100
                 for atk_ac in range(self.n_slots):
@@ -596,8 +606,9 @@ class SecurityEnv(BaseEnv):
             self.record_def = env.record_def
 
             self._get_def_payoff = env.get_def_payoff
-            self._convert_to_atk_ob = env.convert_to_atk_ob
-            self._convert_to_def_ob = env.convert_to_def_ob
+            self._convert_to_atk_init_ob = env.convert_to_atk_init_ob
+            self._convert_to_def_init_ob = env.convert_to_def_init_ob
+            self._convert_to_info_ob = env.convert_to_info_ob
             self._encode_history = env.encode_history
 
         def _reset(self):
@@ -613,14 +624,16 @@ class SecurityEnv(BaseEnv):
                 atk_strategy_type = np.zeros(shape=(self.n_slots, self.n_types))
 
                 for t in range(self.n_types):
-                    atk_ob = self._convert_to_atk_ob(history, t)
-                    atk_strategy = self.attacker_strategy(atk_ob)
+                    atk_init_ob = self._convert_to_atk_init_ob(t, self.prior)
+                    atk_ob = self._convert_to_info_ob(history)
+                    atk_strategy = self.attacker_strategy((atk_init_ob, atk_ob))
                     for i in range(self.n_slots):
                         atk_strategy_type[i][t] += atk_strategy[i] * prior[t]
 
                 utility = 0.0
-                def_ob = self._convert_to_def_ob(history)
-                def_strategy = self.defender_strategy(def_ob)
+                def_init_ob = self._convert_to_def_init_ob(self.prior)
+                def_ob = self._convert_to_info_ob(history)
+                def_strategy = self.defender_strategy((def_init_ob, def_ob))
                 for def_ac in range(self.n_slots):
                     p_def = def_strategy[def_ac]
                     for atk_ac in range(self.n_slots):
@@ -659,8 +672,9 @@ class SecurityEnv(BaseEnv):
             self.record_def = env.record_def
 
             self._get_atk_payoff = env.get_atk_payoff
-            self._convert_to_atk_ob = env.convert_to_atk_ob
-            self._convert_to_def_ob = env.convert_to_def_ob
+            self._convert_to_atk_init_ob = env.convert_to_atk_init_ob
+            self._convert_to_def_init_ob = env.convert_to_def_init_ob
+            self._convert_to_info_ob = env.convert_to_info_ob
             self._encode_history = env.encode_history
 
         def _reset(self):
@@ -675,10 +689,12 @@ class SecurityEnv(BaseEnv):
                 return self.cache[encoded]
             else:
                 utility = 0.0
-                atk_ob = self._convert_to_atk_ob(history, t)
-                atk_strategy = self.attacker_strategy(atk_ob)
-                def_ob = self._convert_to_def_ob(history)
-                def_strategy = self.defender_strategy(def_ob)
+                atk_init_ob = self._convert_to_atk_init_ob(t, self.prior)
+                atk_ob = self._convert_to_info_ob(history)
+                atk_strategy = self.attacker_strategy((atk_init_ob, atk_ob))
+                def_init_ob = self._convert_to_def_init_ob(self.prior)
+                def_ob = self._convert_to_info_ob(history)
+                def_strategy = self.defender_strategy((def_init_ob, def_ob))
                 for def_ac in range(self.n_slots):
                     p_def = def_strategy[def_ac]
                     for atk_ac in range(self.n_slots):

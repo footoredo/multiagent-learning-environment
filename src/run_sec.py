@@ -7,6 +7,7 @@ from agent.self_play_agent import SelfPlayAgent
 from agent.ppo_agent import PPOAgent
 from agent.pac_agent import PACAgent
 from agent.mlp_policy import MLPPolicy
+from agent.recurrent_policy import RecurrentPolicy
 import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -42,7 +43,7 @@ def parse_args():
     parser.add_argument('--n-slots', type=int, default=2)
     parser.add_argument('--n-types', type=int, default=2)
     parser.add_argument('--n-rounds', type=int, default=2)
-    parser.add_argument('--prior', type=int, nargs='+')
+    parser.add_argument('--prior', type=float, nargs='+')
     parser.add_argument('--reset', action="store_true")
     parser.add_argument('--zero-sum', action="store_true")
     parser.add_argument('--learning-rate', type=float, default=5e-6)
@@ -107,16 +108,20 @@ exp_dir = os.path.join(result_folder, exp_name)
 
 
 def get_make_ppo_agent(reset_every, timesteps_per_actorbatch, max_iterations):
-    def make_ppo_agent(observation_space, action_space, handlers):
-        def policy(name, agent_name, ob_space, ac_space):
+    def make_ppo_agent(observation_space, action_space, steps_per_round, handlers):
+        def policy(name, agent_name, init_ob_space, info_ob_space, ac_space):
+            # init_ob_space, info_ob_space = ob_space
             # return MLPPolicy(name=name, agent_name=agent_name, ob_space=ob_space, ac_space=ac_space,
             #                  hid_size=256, num_hid_layers=4)
-            return MLPPolicy(name=name, agent_name=agent_name, ob_space=ob_space, ac_space=ac_space,
-                             hid_size=network_width, num_hid_layers=network_depth)
+            return RecurrentPolicy(name=name, agent_name=agent_name, init_ob_space=init_ob_space,
+                                   info_ob_space=info_ob_space, ac_space=ac_space,
+                                   hid_size=network_width, num_hid_layers=network_depth)
 
         global ppo_agent_cnt
+        init_ob_space, info_ob_space = observation_space
         agent = PPOAgent(name="ppo_agent_%d" % ppo_agent_cnt, policy_fn=policy,
-                         ob_space=observation_space, ac_space=action_space, handlers=handlers,
+                         init_ob_space=init_ob_space, info_ob_space=info_ob_space, ac_space=action_space,
+                         steps_per_round=steps_per_round, handlers=handlers,
                          timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0,
                          optim_epochs=1, optim_stepsize=learning_rate,
                          gamma=0.99, lam=0.95, reset_every=reset_every, max_iters=max_iterations,
@@ -194,6 +199,7 @@ if __name__ == "__main__":
     result_folder = "../result/"
     exp_name = args.exp_name or \
         "_".join(["security",
+                  "recurrent",
                   agent,
                   "seed:{}".format(seed),
                   "game:{}-{}-{}-{}".format(n_slots, n_types, n_rounds, ":".join(map(str, prior))),
@@ -272,7 +278,7 @@ if __name__ == "__main__":
                 # joblib.dump(train_result["local_"], join_path_and_check(exp_dir, "final_assessment.obj"))
                 print(assessments)
                 print(train_result["random_assessment"])
-                for i in range(test_every, max_steps, test_every):
+                for i in range(test_every, max_steps + 1, test_every):
                     res["episode"].append(i)
                     res["assessment"].append(assessments[i // test_every - 1][0][0])
                     res["player"].append("attacker")
