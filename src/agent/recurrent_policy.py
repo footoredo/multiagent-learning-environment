@@ -31,12 +31,13 @@ class RecurrentPolicy(object):
 
         # ob = (init_ob, info_ob)
 
-        rnn_cell = tf.nn.rnn_cell.LSTMCell(num_units=hid_size, name="rnn_cell")
+        rnn_cell = tf.nn.rnn_cell.GRUCell(num_units=hid_size, name="rnn_cell")
 
         with tf.variable_scope("init"):
             c = tf.contrib.layers.fully_connected(init_ob, hid_size)
-            m = tf.contrib.layers.fully_connected(init_ob, hid_size)
-            init_state = tf.nn.rnn_cell.LSTMStateTuple(c, m)
+            # m = tf.contrib.layers.fully_connected(init_ob, hid_size)
+            # init_state = tf.nn.rnn_cell.LSTMStateTuple(c, m)
+            init_state = c
 
         outputs, state = tf.nn.dynamic_rnn(rnn_cell, info_ob, initial_state=init_state)
 
