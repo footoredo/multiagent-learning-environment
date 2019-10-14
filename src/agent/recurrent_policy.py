@@ -32,8 +32,13 @@ class RecurrentPolicy(object):
         # ob = (init_ob, info_ob)
 
         rnn_cell = tf.nn.rnn_cell.LSTMCell(num_units=hid_size, name="rnn_cell")
-        init_state = rnn_cell.get_initial_state(init_ob)
-        _, state = tf.nn.dynamic_rnn(rnn_cell, info_ob, initial_state=init_state)
+
+        with tf.variable_scope("init"):
+            c = tf.contrib.layers.fully_connected(init_ob, hid_size)
+            m = tf.contrib.layers.fully_connected(init_ob, hid_size)
+            init_state = tf.nn.rnn_cell.LSTMStateTuple(c, m)
+
+        outputs, state = tf.nn.dynamic_rnn(rnn_cell, info_ob, initial_state=init_state)
 
         # print(ob_space.shape)
         # ob = U.get_placeholder(name="ob_" + agent_name, dtype=tf.float32, shape=[sequence_length] + list(ob_space.shape))
@@ -42,7 +47,8 @@ class RecurrentPolicy(object):
 
         with tf.variable_scope('vf'):
             # obz = tf.clip_by_value((ob - self.ob_rms.mean) / self.ob_rms.std, -5.0, 5.0)
-            obz = state[1]
+            obz = outputs[:, -1, :]
+            print(obz)
             last_out = obz
             for i in range(num_hid_layers):
                 last_out = tf.nn.tanh(tf.layers.dense(last_out, hid_size, name="fc%i"%(i+1), kernel_initializer=U.normc_initializer(1.0)))

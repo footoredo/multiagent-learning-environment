@@ -303,11 +303,11 @@ class SecurityEnv(BaseEnv):
                 if init_ob[i + self.n_types] > .5:
                     name = str(i)
                     break
-            return name + get_history_name(info_ob)
+            return name + get_history_name(info_ob[1:])
 
         def dfd_ob_namer(ob):
             init_ob, info_ob = ob
-            return "?" + get_history_name(info_ob)
+            return "?" + get_history_name(info_ob[1:])
 
         return [atk_ob_namer, dfd_ob_namer]
 
@@ -462,14 +462,15 @@ class SecurityEnv(BaseEnv):
         if self.record_def:
             raise NotImplementedError
         else:
-            ob = np.zeros(shape=(r, 1 + self.n_slots))
+            ob = np.zeros(shape=(r + 1, 1 + self.n_slots))
         # print(r)
+        ob[0][0] = self.n_rounds
         for i in range(r):
-            ob[i][0] = self.n_rounds - i
+            ob[i + 1][0] = self.n_rounds - i - 1
             if self.record_def:
                 raise NotImplementedError
             else:
-                ob[i][history[i] + 1] = 1.0
+                ob[i + 1][history[i] + 1] = 1.0
 
         return ob
 
