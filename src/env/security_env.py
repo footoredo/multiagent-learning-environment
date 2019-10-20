@@ -150,14 +150,14 @@ class SecurityEnv(BaseEnv):
         self.probs = None
 
         if seed == "benchmark":
-            assert n_slots == 2 and n_rounds == 1 and n_types == 2
-            self.atk_rew = np.array([[2., 1.], [1., 2.]])
+            assert n_slots == 2 and n_types == 2
+            self.atk_rew = np.array([[2., 0.], [0., 2.]])
             self.atk_pen = np.array([[-1., -1.], [-1., -1.]])
             self.dfd_rew = np.array([1., 1.])
             self.dfd_pen = np.array([-1., -1.])
         else:
             if seed is not None:
-                np.random.seed(seed)
+                np.random.seed(int(seed))
             value_range = value_high - value_low
             self.atk_rew = np.random.rand(n_types, n_slots) * value_range + value_low
             self.atk_pen = -np.random.rand(n_types, n_slots) * value_range - value_low

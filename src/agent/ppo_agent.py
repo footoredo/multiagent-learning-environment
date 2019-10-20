@@ -119,7 +119,7 @@ class PPOAgent(BaseAgent):
         avg_var_list = avg_pi.get_trainable_variables()
         avg_lossandgrad = U.function([init_ob, info_ob, ac], [avg_loss, U.flatgrad(avg_loss, avg_var_list)])
         # avg_adam = MpiAdam(avg_var_list, epsilon=adam_epsilon)
-        avg_adam = tf.train.AdamOptimizer(learning_rate=1e-2, epsilon=adam_epsilon)
+        avg_adam = tf.train.AdamOptimizer(learning_rate=1e-5, epsilon=adam_epsilon)
         avg_optimize = U.function([init_ob, info_ob, ac], avg_adam.minimize(avg_loss, var_list=avg_var_list))
 
         assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)
@@ -319,13 +319,13 @@ class PPOAgent(BaseAgent):
                     # if MPI.COMM_WORLD.Get_rank() == 0:
                     #     logger.dump_tabular()
 
-            # if ep_i > 0 and ep_i % 10 == 0:
-            #     seg_gen = self._traj_segment_generator(self.pi, env, 500, stochastic=True)
-            #     for _ in range(1):
-            #         seg = seg_gen.__next__()
-            #         self.avg_init_ob += list(seg["init_ob"])
-            #         self.avg_info_ob += list(seg["info_ob"])
-            #         self.avg_ac += list(seg["ac"])
+            if True:
+                seg_gen = self._traj_segment_generator(self.pi, env, 5000, stochastic=True)
+                for _ in range(1):
+                    seg = seg_gen.__next__()
+                    self.avg_init_ob += list(seg["init_ob"])
+                    self.avg_info_ob += list(seg["info_ob"])
+                    self.avg_ac += list(seg["ac"])
 
             if ep_i > 0 and ep_i % reset_every == 0:
                 U.get_session().run(tf.variables_initializer(avg_pi.get_trainable_variables()))

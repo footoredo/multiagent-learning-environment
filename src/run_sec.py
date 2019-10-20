@@ -38,7 +38,7 @@ pac_agent_cnt = 0
 def parse_args():
     parser = argparse.ArgumentParser(description="Run security game.")
 
-    parser.add_argument('--seed', type=int)
+    parser.add_argument('--seed', type=str)
     parser.add_argument('--agent', type=str, default="ppo")
     parser.add_argument('--n-slots', type=int, default=2)
     parser.add_argument('--n-types', type=int, default=2)
@@ -197,6 +197,7 @@ if __name__ == "__main__":
     # other = "1000-test-steps-large-network"
 
     result_folder = "../result/"
+    plot_folder = "../plots/"
     exp_name = args.exp_name or \
         "_".join(["security",
                   "recurrent",
@@ -216,6 +217,7 @@ if __name__ == "__main__":
                   "train:{}*{}".format(timesteps_per_batch, iterations_per_round)])
     # exp_name = "security_seed:5410_2-2-2_gs_no-reset_5e-6_wolf_adv:20.0_1:1_latest_10"
     exp_dir = os.path.join(result_folder, exp_name)
+    plot_dir = os.path.join(plot_folder, exp_name)
 
     # logger.configure("qweqw.log")
     #train_cnt = np.zeros(shape=(2,2), dtype=np.int32)
@@ -246,7 +248,7 @@ if __name__ == "__main__":
     #     s = 0.
     #     T = 10
     #     for _ in range(T):
-    res = {"episode": [], "assessment": [], "player": []}
+    res = {"episode": [], "assessment": [], "current_assessments": [], "player": []}
 
     for p in [.5]:
         for _ in range(1):
@@ -272,6 +274,7 @@ if __name__ == "__main__":
                                      save_every=save_every, save_path=exp_dir, store_results=False)
                 env.export_settings(join_path_and_check(exp_dir, "env_settings.obj"))
                 assessments = train_result["assessments"]
+                current_assessments = train_result["current_assessments"]
                 joblib.dump(train_result["final_assessment"], join_path_and_check(exp_dir, "final_assessment.obj"))
                 joblib.dump(local_results, join_path_and_check(exp_dir, "local_results.obj"))
                 joblib.dump(train_info, join_path_and_check(exp_dir, "train_info.obj"))
@@ -281,18 +284,22 @@ if __name__ == "__main__":
                 for i in range(test_every, max_steps + 1, test_every):
                     res["episode"].append(i)
                     res["assessment"].append(assessments[i // test_every - 1][0][0])
+                    res["current_assessments"].append(current_assessments[i // test_every - 1][0][0])
                     res["player"].append("attacker")
 
                     res["episode"].append(i)
                     res["assessment"].append(assessments[i // test_every - 1][1][0])
+                    res["current_assessments"].append(current_assessments[i // test_every - 1][1][0])
                     res["player"].append("defender")
 
                     res["episode"].append(i)
                     res["assessment"].append(assessments[i // test_every - 1][0][1])
+                    res["current_assessments"].append(current_assessments[i // test_every - 1][0][1])
                     res["player"].append("attacker PBNE")
 
                     res["episode"].append(i)
                     res["assessment"].append(assessments[i // test_every - 1][1][1])
+                    res["current_assessments"].append(current_assessments[i // test_every - 1][1][1])
                     res["player"].append("defender PBNE")
             else:
                 pass
@@ -309,7 +316,10 @@ if __name__ == "__main__":
     df = pd.DataFrame(data=res)
     sns.set()
     sns.lineplot(x="episode", y="assessment", hue="player", data=df)
-    plt.savefig(join_path_and_check(exp_dir, "result.png"), dpi=800)
+    plt.savefig(join_path_and_check(plot_dir, "result.png"), dpi=800)
+    plt.show()
+    sns.lineplot(x="episode", y="current_assessments", hue="player", data=df)
+    plt.savefig(join_path_and_check(plot_dir, "current_result.png"), dpi=800)
     plt.show()
 else:
     print("fuck")

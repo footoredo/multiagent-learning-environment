@@ -121,6 +121,7 @@ class NaiveController(BaseController):
         self.records = {
             "local_results": [],
             "global_results": [],
+            "current_assessments": [],
             "assessments": []
         }
 
@@ -136,6 +137,7 @@ class NaiveController(BaseController):
             local_results = []
             global_results = []
         assessments = self.records["assessments"]
+        current_assessments = self.records["current_assessments"]
         self.latest_policy = [agent.get_initial_policy() for agent in self.agents]
         self.policy_pool = [[] for _ in self.agents]
 
@@ -172,8 +174,8 @@ class NaiveController(BaseController):
                     # rews = self.run_benchmark(1000)
                     assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
                                                              for i in range(self.num_agents)])
-                    # assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
-                    #                                          for i in range(self.num_agents)])
+                    current_assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
+                                                             for i in range(self.num_agents)])
                     # assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
                     #                                          for i in range(self.num_agents)])
                     # for i in range(self.num_agents):
@@ -181,7 +183,9 @@ class NaiveController(BaseController):
                     # exp[0] += 0.633
                     # exp[1] += 2.387
                     assessments.append(assessment)
-                    print("Current assessment:", assessment)
+                    current_assessments.append(current_assessment)
+                    print("Average assessment:", assessment)
+                    print("Current assessment:", current_assessment)
                     # self.run_benchmark()
 
                 now_time = time.time()
