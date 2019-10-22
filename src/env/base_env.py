@@ -10,6 +10,7 @@ class BaseEnv(ABC):
         self.num_agents = num_agents
         self.observation_spaces = observation_spaces
         self.action_spaces = action_spaces
+        self.policies = None
 
     def get_observation_space(self, i):
         return self.observation_spaces[i]
@@ -44,6 +45,10 @@ class BaseEnv(ABC):
 
     def original_num_agents(self):
         return self.num_agents
+
+    def update_policies(self, policies):
+        # print(policies)
+        self.policies = policies
 
     @abstractmethod
     def reset(self, verbose=False):

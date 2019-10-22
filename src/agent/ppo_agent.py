@@ -152,6 +152,7 @@ class PPOAgent(BaseAgent):
         def train_phase(i, statistics: Statistics, progress, ep_i):
             # print(self.scope + ("avg util: %.5f" % self.average_utility))
             env = self.pull(opponent)
+            env.update_policies(self._get_policy())
             seg_gen = self._traj_segment_generator(self.pi, env, timesteps_per_actorbatch, stochastic=True)
 
             episodes_so_far = 0
@@ -318,6 +319,7 @@ class PPOAgent(BaseAgent):
                     # logger.record_tabular("TimeElapsed", time.time() - tstart)
                     # if MPI.COMM_WORLD.Get_rank() == 0:
                     #     logger.dump_tabular()
+                env.update_policies(self._get_policy())
 
             if True:
                 seg_gen = self._traj_segment_generator(self.pi, env, 5000, stochastic=True)

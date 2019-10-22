@@ -63,9 +63,9 @@ class Statistics(object):
             print("Load statistics done.")
 
     def get_update_handler(self):
-        def update_handler(last_obs, start, actions, rews, infos, done, obs):
+        def update_handler(last_obs, start, actions, rews, infos, done, obs, history):
             if self.keep_record:
-                self.record.append((last_obs, start, actions, rews, done))
+                self.record.append((last_obs, start, actions, rews, done, history))
             if start:
                 return
             if done:
