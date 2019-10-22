@@ -7,6 +7,9 @@ class Policy(object):
         self.prob_fn = prob_fn
         self.strategy_fn = strategy_fn
 
+    def strategy(self, obs):
+        return self.strategy_fn(obs)
+
     def act(self, obs):
         action = self.act_fn(obs)
         return action

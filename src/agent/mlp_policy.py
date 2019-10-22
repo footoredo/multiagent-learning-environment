@@ -76,7 +76,7 @@ class MLPPolicy(object):
         return prob1[0][ac]
 
     def strategy(self, ob):
-        print(ob, ob[None], self._prob(ob[None])[0])
+        # print(ob, ob[None], self._prob(ob[None])[0])
         return self._prob(ob[None])[0]
 
     def act_with_explore(self, stochastic, ob, explore_prob):

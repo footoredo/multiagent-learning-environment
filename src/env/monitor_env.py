@@ -16,7 +16,7 @@ class MonitorEnv(BaseEnvWrapper):
             self.update_handlers(*args, **kwargs)
 
     def reset(self, debug=False):
-        obs, probs = self.base_env.reset(debug)
+        obs, probs, history = self.base_env.reset(debug)
         # print("ASd")
         self.update(
             last_obs=None,
@@ -25,13 +25,14 @@ class MonitorEnv(BaseEnvWrapper):
             rews=None,
             infos=None,
             done=False,
-            obs=obs
+            obs=obs,
+            history=history
         )
         self.last_obs = obs
-        return obs, probs
+        return obs, probs, history
 
     def step(self, actions, action_probs):
-        obs, rews, infos, done, probs = self.base_env.step(actions, action_probs)
+        obs, rews, infos, done, probs, history = self.base_env.step(actions, action_probs)
         self.update(
             last_obs=self.last_obs,
             start=False,
@@ -39,7 +40,8 @@ class MonitorEnv(BaseEnvWrapper):
             rews=rews,
             infos=infos,
             done=done,
-            obs=obs
+            obs=obs,
+            history=history
         )
         self.last_obs = obs
-        return obs, rews, infos, done, probs
+        return obs, rews, infos, done, probs, history

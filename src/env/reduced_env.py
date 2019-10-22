@@ -40,6 +40,9 @@ class ReducedEnv(BaseEnvWrapper):
         #     return tuple([self.choose_fixed(_arr) for _arr in arr])
         return [arr[i] for i in self.fixed_indices]
 
+    def update_policies(self, policies):
+        self.base_env.update_policies(self.merge_single(self.fixed_policies, policies))
+
     def merge(self, arr_fixed, arr_unfixed):
         # print(len(arr_fixed), len(arr_unfixed))
         arr = [None for _ in range(self.base_env.num_agents)]
@@ -64,9 +67,9 @@ class ReducedEnv(BaseEnvWrapper):
 
     def reset(self, debug=False):
         # print("ASd")
-        obs, probs = self.base_env.reset(debug)
+        obs, probs, history = self.base_env.reset(debug)
         self.fixed_obs = self.choose_fixed(obs)
-        return self.choose_unfixed_single(obs), self.choose_unfixed_single(probs)
+        return self.choose_unfixed_single(obs), self.choose_unfixed_single(probs), history
 
     def step(self, actions, action_probs):
         fixed_ap = [self.fixed_policies[i].act_with_prob(self.fixed_obs[i]) for i in range(len(self.fixed_policies))]
@@ -74,8 +77,8 @@ class ReducedEnv(BaseEnvWrapper):
         fixed_actions, fixed_probs = list(fixed_actions), list(fixed_probs)
         ret = super().step(self.merge_single(fixed_actions, actions), self.merge_single(fixed_probs, action_probs))
         # print(ret)
-        obs, rews, infos, done, probs = ret
+        obs, rews, infos, done, probs, history = ret
         # print(probs)
         self.fixed_obs = self.choose_fixed(obs)
         return self.choose_unfixed_single(obs), self.choose_unfixed_single(rews), self.choose_unfixed_single(infos), \
-               done, self.choose_unfixed_single(probs)
+               done, self.choose_unfixed_single(probs), history

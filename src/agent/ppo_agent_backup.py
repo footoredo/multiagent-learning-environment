@@ -47,7 +47,7 @@ class PPOAgent(BaseAgent):
               adam_epsilon=1e-5,
               schedule='constant',  # annealing for stepsize parameters (epsilon and adam)
               opponent='latest',  # opponent type
-              exploration=None
+              exploration=None, reset_every=None
               ):
         self.config = {
             "timesteps_per_actorbatch": timesteps_per_actorbatch,
@@ -74,6 +74,7 @@ class PPOAgent(BaseAgent):
         self.exploration = exploration
         pi = policy_fn("pi", self.name, ob_space, ac_space)  # Construct network for new policy
         oldpi = policy_fn("oldpi", self.name, ob_space, ac_space)  # Network for old policy
+        avgpi = policy_fn("avgpi", self.name, ob_space, ac_space)  # Network for avg policy
         atarg = tf.placeholder(dtype=tf.float32, shape=[None])  # Target advantage function (if applicable)
         prob = tf.placeholder(dtype=tf.float32, shape=[None])  # Visiting probability
         ret = tf.placeholder(dtype=tf.float32, shape=[None])  # Empirical return
@@ -103,21 +104,38 @@ class PPOAgent(BaseAgent):
 
         var_list = pi.get_trainable_variables()
         lossandgrad = U.function([ob, ac, atarg, prob, ret, lrmult], losses + [U.flatgrad(total_loss, var_list)])
-        adam = MpiAdam(var_list, epsilon=adam_epsilon)
+        adam = MpiAdam(var_list, epsilon=adam_epsilon, beta1=0.5)
         # adam =
 
         assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)
                                                         for (oldv, newv) in
                                                         zipsame(oldpi.get_variables(), pi.get_variables())])
+
+        avg_alpha = tf.placeholder(dtype=tf.float32, shape=[])
+        update_avg = U.function([avg_alpha], [], updates=[tf.assign(avgv, tf.multiply(avgv, (1 - avg_alpha)) +
+                                                                    tf.multiply(newv, avg_alpha))
+                                                        for (avgv, newv) in
+                                                        zipsame(avgpi.get_trainable_variables(), pi.get_trainable_variables())])
+
+        self.pi_cnt = 0
+        self.curpi = self.policy_fn("curpi%d" % self.pi_cnt, self.name, self.ob_space,
+                                    self.ac_space)  # Network for submitted policy
+        self.assign_cur_eq_new = U.function([], [], updates=[tf.assign(curv, newv)
+                                                             for (curv, newv) in
+                                                             zipsame(self.curpi.get_variables(),
+                                                                     pi.get_variables())])
+
         compute_losses = U.function([ob, ac, atarg, prob, ret, lrmult], losses)
 
         U.initialize()
         adam.sync()
+        self.cnt = 1
+        update_avg(1. / self.cnt)
+        self.assign_cur_eq_new()
 
         self.gamma = gamma
         self.lam = lam
         self.pi = pi
-        self.pi_cnt = 0
 
         self.average_utility = 0.0
         self.tot = 0
@@ -125,6 +143,8 @@ class PPOAgent(BaseAgent):
         def train_phase(i, statistics: Statistics, progress, ep_i):
             # print(self.scope + ("avg util: %.5f" % self.average_utility))
             env = self.pull(opponent)
+            env.update_policies(self._get_policy())
+            # print(env.policies)
             seg_gen = self._traj_segment_generator(self.pi, env, timesteps_per_actorbatch, stochastic=True)
 
             episodes_so_far = 0
@@ -153,6 +173,7 @@ class PPOAgent(BaseAgent):
 
                 # logger.log("********** Iteration %i ************" % iters_so_far)
 
+                # print(env.policies)
                 seg = seg_gen.__next__()
                 self._add_vtarg_and_adv(seg, gamma, lam)
 
@@ -175,6 +196,8 @@ class PPOAgent(BaseAgent):
                 #     atarg = (atarg - atarg.mean())
                     # print(atarg)
                 d = Dataset(dict(ob=ob, ac=ac, atarg=atarg, vtarg=tdlamret, prob=prob), deterministic=pi.recurrent)
+                # for i in range(5):
+                #     print(ob[i], ac[i], atarg[i], seg["vpred"][i])
                 optim_batchsize = ob.shape[0]
                 # print("optim_batchsize:", optim_batchsize)
 
@@ -288,7 +311,12 @@ class PPOAgent(BaseAgent):
                 #     logger.dump_tabular()
 
             # print(time.time() - tstart)
-            self.push(self._get_policy())
+            self.cnt += 1
+            update_avg(1. / self.cnt)
+            # update_avg(0.9)
+            self.assign_cur_eq_new()
+            self.push(self._get_policy(self.curpi), self._get_policy(avgpi))
+            env.update_policies(self._get_policy())
             del env
             return {
                 "rews": rews,
@@ -296,16 +324,15 @@ class PPOAgent(BaseAgent):
             }
 
         self.train_phase = train_phase
-        self.curpi = self.policy_fn("curpi%d" % self.pi_cnt, self.name, self.ob_space, self.ac_space)  # Network for submitted policy
-        self.assign_cur_eq_new = U.function([], [], updates=[tf.assign(curv, newv)
-                                                            for (curv, newv) in
-                                                            zipsame(self.curpi.get_variables(), self.pi.get_variables())])
+
 
     def _traj_segment_generator(self, pi, env, horizon, stochastic):
+        # print(env.policies)
         t = 0
         ac = env.action_space.sample()  # not used, just so we have the datatype
         new = True  # marks if we're on first timestep of an episode
-        ob, prob = env.reset()
+        # print(env.policies)
+        ob, prob, history = env.reset()
         # print(ob, prob)
 
         cur_ep_ret = 0  # return in current episode
@@ -358,7 +385,7 @@ class PPOAgent(BaseAgent):
             prevacs[i] = prevac
             probs[i] = prob
 
-            ob, rew, _, new, prob = env.step(ac, my_prob)
+            ob, rew, _, new, prob, history = env.step(ac, my_prob)
             # print("1", ob, prob)
             # print(new)
             rews[i] = rew
@@ -370,7 +397,7 @@ class PPOAgent(BaseAgent):
                 ep_lens.append(cur_ep_len)
                 cur_ep_ret = 0
                 cur_ep_len = 0
-                ob, prob = env.reset()
+                ob, prob, history = env.reset()
             t += 1
 
     @staticmethod
@@ -401,8 +428,7 @@ class PPOAgent(BaseAgent):
         # print("vpred", seg["vpred"])
         # print("seg", seg)
 
-    def _get_policy(self):
-        self.assign_cur_eq_new()
+    def _get_policy(self, pi=None):
         # with tf.variable_scope(self.scope):
             # curpi = self.policy_fn("curpi%d" % self.pi_cnt, self.ob_space, self.ac_space)  # Network for submitted policy
             # self.pi_cnt += 1
@@ -412,20 +438,25 @@ class PPOAgent(BaseAgent):
             #                                                 zipsame(curpi.get_variables(), self.pi.get_variables())])
             # assign_cur_eq_new()
             # delete ass
+        if pi is None:
+            pi = self.curpi
 
         def act_fn(ob):
             if type(self.exploration) == float:
-                ac, _ = self.curpi.act_with_explore(stochastic=True, ob=ob, explore_prob=self.exploration)
+                ac, _ = pi.act_with_explore(stochastic=True, ob=ob, explore_prob=self.exploration)
             elif self.exploration is None:
-                ac, _ = self.curpi.act(stochastic=True, ob=ob)
+                ac, _ = pi.act(stochastic=True, ob=ob)
             else:
                 raise NotImplementedError
             return ac
 
         def prob_fn(ob, ac):
-            return self.curpi.prob(ob, ac)
+            return pi.prob(ob, ac)
 
-        return Policy(act_fn, prob_fn)
+        def strategy_fn(ob):
+            return pi.strategy(ob)
+
+        return Policy(act_fn, prob_fn, strategy_fn)
 
     def get_initial_policy(self):
         return self._get_policy()
