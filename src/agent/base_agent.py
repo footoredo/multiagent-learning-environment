@@ -44,3 +44,6 @@ class BaseAgent(ABC):
 
     def load(self, load_path):
         pass
+
+    def load_sub(self, load_path):
+        pass

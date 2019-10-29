@@ -15,7 +15,42 @@ import json
 from common.path_utils import *
 
 
-class PPOAgent(BaseAgent):
+def trim_name(name):
+    return '/'.join(name.split('/')[2:])
+
+
+def save_variables(save_path, variables=None, sess=None):
+    import joblib
+    sess = sess or U.get_session()
+    variables = variables or tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+
+    ps = sess.run(variables)
+    save_dict = {trim_name(v.name): value for v, value in zip(variables, ps)}
+    dirname = os.path.dirname(save_path)
+    if any(dirname):
+        os.makedirs(dirname, exist_ok=True)
+    joblib.dump(save_dict, save_path)
+
+
+def load_variables(load_path, variables=None, sess=None):
+    import joblib
+    sess = sess or U.get_session()
+    variables = variables or tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+
+    loaded_params = joblib.load(os.path.expanduser(load_path))
+    restores = []
+    if isinstance(loaded_params, list):
+        assert len(loaded_params) == len(variables), 'number of variables loaded mismatches len(variables)'
+        for d, v in zip(loaded_params, variables):
+            restores.append(v.assign(d))
+    else:
+        for v in variables:
+            restores.append(v.assign(loaded_params[trim_name(v.name)]))
+
+    sess.run(restores)
+
+
+class PPOAgentStacked(BaseAgent):
     def __init__(self, name, *args, **kwargs):
         self.name = name
         with tf.variable_scope(name):
@@ -27,14 +62,28 @@ class PPOAgent(BaseAgent):
     def get_config(self):
         return self.config
 
+    def _save(self, pi, name, save_path):
+        save_variables(join_path(save_path, "model-{}.obj".format(name)), variables=pi.get_variables())
+
     def save(self, save_path):
         json.dump(self.config, open(join_path_and_check(save_path, "config.json"), "w"))
-        U.save_variables(join_path(save_path, "model.obj"),
-                         variables=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name))
+        self._save(self.pi, "current", save_path)
+        self._save(self.avgpi, self.n_rounds, save_path)
+        for i in range(self.n_rounds - 1):
+            self._save(self.subpis[i], self.n_rounds - i - 1, save_path)
+
+    def _load(self, pi, name, save_path):
+        load_variables(join_path(save_path, "model-{}.obj".format(name)), variables=pi.get_variables())
 
     def load(self, load_path):
-        U.load_variables(join_path(load_path, "model.obj"),
-                         variables=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name))
+        self._load(self.pi, "current", load_path)
+        self._load(self.avgpi, self.n_rounds, load_path)
+        self.load_sub(load_path)
+
+    def load_sub(self, load_path):
+        for i in range(self.n_rounds - 1):
+            self._load(self.subpis[i], self.n_rounds - i - 1, load_path)
+            print("Loaded subgame solver %d!" % i)
 
     def _init(self, policy_fn, ob_space, ac_space,
               handlers,
@@ -43,6 +92,7 @@ class PPOAgent(BaseAgent):
               optim_epochs, optim_stepsize,  # optimization hypers
               beta1,
               gamma, lam,  # advantage estimation
+              n_rounds,
               max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
               callback=None,  # you can do anything in the callback, since it takes locals(), globals()
               adam_epsilon=1e-5,
@@ -73,9 +123,12 @@ class PPOAgent(BaseAgent):
         self.ac_space = ac_space
         self.push, self.pull = handlers
         self.exploration = exploration
+        self.n_rounds = n_rounds
+        # sub_ob_space = ob_space
         pi = policy_fn("pi", self.name, ob_space, ac_space)  # Construct network for new policy
         oldpi = policy_fn("oldpi", self.name, ob_space, ac_space)  # Network for old policy
         avgpi = policy_fn("avgpi", self.name, ob_space, ac_space)  # Network for avg policy
+        self.subpis = [policy_fn("subpi%d" % (n_rounds - i), self.name, ob_space, ac_space) for i in range(n_rounds - 1)]
         atarg = tf.placeholder(dtype=tf.float32, shape=[None])  # Target advantage function (if applicable)
         prob = tf.placeholder(dtype=tf.float32, shape=[None])  # Visiting probability
         ret = tf.placeholder(dtype=tf.float32, shape=[None])  # Empirical return
@@ -137,6 +190,7 @@ class PPOAgent(BaseAgent):
         self.gamma = gamma
         self.lam = lam
         self.pi = pi
+        self.avgpi = avgpi
 
         self.average_utility = 0.0
         self.tot = 0
@@ -187,6 +241,7 @@ class PPOAgent(BaseAgent):
                 # ob, ac, atarg, ret, td1ret = map(np.concatenate, (obs, acs, atargs, rets, td1rets))
                 # logger.log(seg["rew"])
                 ob, ac, atarg, tdlamret, prob = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"], seg["prob"]
+                # print(ob, ac, seg["rew"], seg["vpred"])
                 # print(prob)
                 # logger.log(atarg)
                 vpredbefore = seg["vpred"]  # predicted value function before udpate
@@ -326,14 +381,23 @@ class PPOAgent(BaseAgent):
 
         self.train_phase = train_phase
 
+    def trim_ob(self, ob):
+        return ob[:-self.n_rounds]
+
+    def get_round(self, round_ob):
+        for i in range(round_ob.shape[0]):
+            if round_ob[i] > 0.5:
+                return i
 
     def _traj_segment_generator(self, pi, env, horizon, stochastic):
         # print(env.policies)
         t = 0
         ac = env.action_space.sample()  # not used, just so we have the datatype
+        # ac = [0., 0.]
         new = True  # marks if we're on first timestep of an episode
         # print(env.policies)
         ob, prob, history = env.reset()
+        ob = self.trim_ob(ob)
         # print(ob, prob)
 
         cur_ep_ret = 0  # return in current episode
@@ -353,15 +417,17 @@ class PPOAgent(BaseAgent):
         while True:
             prevac = ac
             if type(self.exploration) == float:
-                ac, vpred = pi.act_with_explore(stochastic, ob, self.exploration)
+                # ac, vpred = pi.act_with_explore(stochastic, ob, self.exploration)
+                raise NotImplementedError
             elif self.exploration is None:
                 # ac, vpred = pi.act_with_explore(stochastic, ob, .1)
                 # print(ob)
                 ac, vpred = pi.act(stochastic, ob)
+                # st = pi.strategy(ob)
             else:
                 raise NotImplementedError
 
-            my_prob = pi.prob(ob, ac)
+            my_prob = 0.0
 
             # Slight weirdness here because we need value function at time T
             # before returning segment [0, T-1] so we get the correct
@@ -386,19 +452,35 @@ class PPOAgent(BaseAgent):
             prevacs[i] = prevac
             probs[i] = prob
 
-            ob, rew, _, new, prob, history = env.step(ac, my_prob)
+            rew = 0.0
+
+            for j in range(self.n_rounds - 1):
+                ob, sub_rew, _, new, prob, history = env.step(ac, my_prob)
+                rew += sub_rew
+                ob = self.trim_ob(ob)
+                ac, _ = self.subpis[j].act(stochastic, ob)
+                my_prob = 0.0
+
+            _, sub_rew, _, new, _, _ = env.step(ac, my_prob)
+
+            rew += sub_rew
+            rews[i] = rew
+
             # print("1", ob, prob)
             # print(new)
-            rews[i] = rew
 
             cur_ep_ret += rew
             cur_ep_len += 1
+
+            assert new
             if new:
                 ep_rets.append(cur_ep_ret)
                 ep_lens.append(cur_ep_len)
                 cur_ep_ret = 0
                 cur_ep_len = 0
                 ob, prob, history = env.reset()
+                ob = self.trim_ob(ob)
+
             t += 1
 
     @staticmethod
@@ -443,24 +525,34 @@ class PPOAgent(BaseAgent):
             pi = self.curpi
 
         def act_fn(ob):
+            ob, round = ob[:-self.n_rounds], self.get_round(ob[-self.n_rounds:])
+            truepi = pi if round == 0 else self.subpis[round - 1]
             if type(self.exploration) == float:
-                ac, _ = pi.act_with_explore(stochastic=True, ob=ob, explore_prob=self.exploration)
+                ac, _ = truepi.act_with_explore(stochastic=True, ob=ob, explore_prob=self.exploration)
             elif self.exploration is None:
-                ac, _ = pi.act(stochastic=True, ob=ob)
+                ac, _ = truepi.act(stochastic=True, ob=ob)
             else:
                 raise NotImplementedError
             return ac
 
         def prob_fn(ob, ac):
-            return pi.prob(ob, ac)
+            ob, round = ob[:-self.n_rounds], self.get_round(ob[-self.n_rounds:])
+            truepi = pi if round == 0 else self.subpis[round - 1]
+            return truepi.prob(ob, ac)
 
         def strategy_fn(ob):
-            return pi.strategy(ob)
+            ob, round = ob[:-self.n_rounds], self.get_round(ob[-self.n_rounds:])
+            truepi = pi if round == 0 else self.subpis[round - 1]
+            # print(ob, round)
+            return truepi.strategy(ob)
 
         return Policy(act_fn, prob_fn, strategy_fn)
 
     def get_initial_policy(self):
         return self._get_policy()
+
+    def get_avg_policy(self):
+        return self._get_policy(self.avgpi)
 
     def get_final_policy(self):
         return self._get_policy()

@@ -24,12 +24,13 @@ class NaiveController(BaseController):
         self.records = None
         self.push_list = None
         self.latest_policy = None
+        self.avg_policy = None
         self.policy_pool = None
 
     def get_push_handler(self, i):
-        def push(policy):
+        def push(policy, avg_policy):
             # self.push_list.append((i, policy))
-            self._push_policy(i, policy)
+            self._push_policy(i, policy, avg_policy)
         return push
 
     @staticmethod
@@ -76,11 +77,12 @@ class NaiveController(BaseController):
     def train(self, *args, **kwargs):
         return self._train(*args, **kwargs)
 
-    def _push_policy(self, i, policy):
+    def _push_policy(self, i, policy, avg_policy):
         if self.policy_store_every is not None:
             raise NotImplementedError
         else:
             self.latest_policy[i] = policy
+            self.avg_policy[i] = avg_policy
         # if self.policy_store_every is not None and self.step > 0 and self.step % self.policy_store_every == 0:
         #     self.policies[i].append(policy)
         # else:
@@ -109,7 +111,6 @@ class NaiveController(BaseController):
         env = self.env
         self.agents = [agent_fn(observation_space=env.get_observation_space(i),
                                 action_space=env.get_action_space(i),
-                                steps_per_round=env.n_rounds,
                                 handlers=self.get_handlers(i))
                        for i, agent_fn in enumerate(self.agent_fns)]
         for agent in self.agents:
@@ -121,7 +122,6 @@ class NaiveController(BaseController):
         self.records = {
             "local_results": [],
             "global_results": [],
-            "current_assessments": [],
             "assessments": []
         }
 
@@ -137,8 +137,8 @@ class NaiveController(BaseController):
             local_results = []
             global_results = []
         assessments = self.records["assessments"]
-        current_assessments = self.records["current_assessments"]
         self.latest_policy = [agent.get_initial_policy() for agent in self.agents]
+        self.avg_policy = [None for agent in self.agents]
         self.policy_pool = [[] for _ in self.agents]
 
         def check_every(every):
@@ -150,8 +150,6 @@ class NaiveController(BaseController):
 
         last_time = time.time()
         while self.step < max_steps:
-            self.step += 1
-            assert(len(self.push_list) == 0)
             for i, policy in self.push_list:
                 self._push_policy(i, policy)
             for i, agent in enumerate(self.agents):
@@ -160,6 +158,8 @@ class NaiveController(BaseController):
                     if sec_prob:
                         env.update_attacker_policy(self.get_policy_with_version(self.policies[0], version="latest"))
                     train_info[i].append(agent.train(i, self.statistics, self.step / max_steps, self.step))
+
+            self.step += 1
 
             if reset and self.step / max_steps > .3:
                 self.statistics.reset()
@@ -172,20 +172,21 @@ class NaiveController(BaseController):
                 global_results.append(global_result)
                 if record_assessment:
                     # rews = self.run_benchmark(1000)
+                    print("current")
+                    assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
+                                                             for i in range(self.num_agents)])
+                    print("avg network")
+                    assessment = self.env.assess_strategies([self.avg_policy[i].strategy_fn
+                                                             for i in range(self.num_agents)])
+                    print("avg")
                     assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
                                                              for i in range(self.num_agents)])
-                    current_assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
-                                                             for i in range(self.num_agents)])
-                    # assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
-                    #                                          for i in range(self.num_agents)])
                     # for i in range(self.num_agents):
                     #     assessment.append(self.env.assess_strategy(i, self.statistics.get_avg_strategy(i)))
                     # exp[0] += 0.633
                     # exp[1] += 2.387
                     assessments.append(assessment)
-                    current_assessments.append(current_assessment)
-                    print("Average assessment:", assessment)
-                    print("Current assessment:", current_assessment)
+                    print("Current assessment:", assessment)
                     # self.run_benchmark()
 
                 now_time = time.time()
@@ -202,7 +203,7 @@ class NaiveController(BaseController):
             self.statistics.show_statistics()
 
         if record_assessment:
-            final_assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i, trim_th=1e-3)
+            final_assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i, trim_th=0.)
                                                            for i in range(self.num_agents)], verbose=True)
             self.records["final_assessment"] = final_assessment
             random_statistics = Statistics(self.env)
@@ -240,13 +241,13 @@ class NaiveController(BaseController):
     def run_test(self, max_steps):
         local_statistics = Statistics(self.env)
 
-        def double_update_handler(last_obs, start, actions, rews, infos, done, obs):
-            local_statistics.get_update_handler()(last_obs, start, actions, rews, infos, done, obs)
-            self.statistics.get_update_handler()(last_obs, start, actions, rews, infos, done, obs)
+        def double_update_handler(last_obs, start, actions, rews, infos, done, obs, history):
+            local_statistics.get_update_handler()(last_obs, start, actions, rews, infos, done, obs, history)
+            self.statistics.get_update_handler()(last_obs, start, actions, rews, infos, done, obs, history)
 
         self._test(max_steps, update_handler=double_update_handler)
-        local_statistics.show_statistics()
-        self.statistics.show_statistics()
+        # local_statistics.show_statistics()
+        # self.statistics.show_statistics()
         return local_statistics.export_statistics(), self.statistics.export_statistics()
         # return self.statistics.export_statistics()
 
@@ -287,7 +288,7 @@ class NaiveController(BaseController):
         # print("ASd")
         test_env.reset()
         for step in range(max_steps):
-            _, _, _, done, _ = test_env.step([], [])
+            _, _, _, done, _, _ = test_env.step([], [])
             if done:
                 test_env.reset()
 

@@ -113,7 +113,7 @@ class GambitSolver:
 
 
 class BeliefSecurityEnv(BaseEnv):
-    def __init__(self, n_slots, n_types, prior, n_rounds, value_low=5., value_high=10., zero_sum=False, seed=None, record_def=False, export_gambit=False):
+    def __init__(self, n_slots, n_types, prior, n_rounds, value_low=5., value_high=10., zero_sum=False, seed=None, record_def=False, export_gambit=False, random_prior=False):
         self.n_slots = n_slots
         self.n_types = n_types
         self.prior = np.array(prior) if prior is not None else np.random.rand(n_types)
@@ -122,12 +122,13 @@ class BeliefSecurityEnv(BaseEnv):
         self.zero_sum = zero_sum
         self.seed = seed
         self.record_def = record_def
+        self.random_prior = random_prior
 
         # self.ob_shape = (n_rounds - 1, 2, n_slots + 1) if record_def else (n_rounds - 1, n_slots + 1)
         # self.ob_len = np.prod(self.ob_shape)
 
-        atk_ob_space = spaces.Box(low=0., high=1., shape=[n_types * 2 + n_rounds])
-        dfd_ob_space = spaces.Box(low=0., high=1., shape=[n_types + n_rounds])
+        atk_ob_space = spaces.Box(low=0., high=1., shape=[n_types * 2])
+        dfd_ob_space = spaces.Box(low=0., high=1., shape=[n_types])
 
         # atk_ob_space = spaces.Box(low=0., high=1., shape=[n_types + self.ob_len])
         # dfd_ob_space = spaces.Box(low=0., high=1., shape=[1 + self.ob_len])
@@ -207,6 +208,11 @@ class BeliefSecurityEnv(BaseEnv):
         self.defender_utility_calculator = self._DefenderUtilityCalculator(self)
 
         self.belief = None
+
+    def generate_belief(self):
+        x = [0.] + sorted(np.random.rand(self.n_types - 1).tolist()) + [1.]
+        for i in range(self.n_types):
+            self.prior[i] = x[i + 1] - x[i]
 
     def export_settings(self, filename):
         joblib.dump((self.n_slots, self.n_types, self.prior, self.n_rounds, self.zero_sum, self.seed, self.record_def),
@@ -348,8 +354,13 @@ class BeliefSecurityEnv(BaseEnv):
         #     for r in range(self.n_rounds - 1):
         #         self.ac_history[r][self.n_slots] = 1.
         # print(self.prior)
-        self.prior = np.random.rand(self.n_types)
-        self.prior /= np.sum(self.prior)
+
+        # self.prior = np.random.rand(self.n_types)
+        # self.prior /= np.sum(self.prior)
+
+        if self.random_prior:
+            self.generate_belief()
+
         self.atk_type = np.random.choice(self.n_types, p=self.prior)
         self.type_ob = np.zeros(shape=self.n_types, dtype=np.float32)
         self.type_ob[self.atk_type] = 1.
@@ -445,14 +456,15 @@ class BeliefSecurityEnv(BaseEnv):
         strategy.update(convert(self.prior, []))
         return strategy
 
-    def assess_strategies(self, strategies, verbose=False):
+    def _assess_strategies(self, strategies):
+        print("prior:", self.prior)
         attacker_strategy, defender_strategy = strategies
         tas = self._convert_attacker_strategy(attacker_strategy, defender_strategy)
         tds = self._convert_defender_strategy(attacker_strategy, defender_strategy)
 
         def display(ts, t='?'):
             for k, v in ts.items():
-               print(t, k, v)
+                print(t, k, v)
 
         print("Attacker:")
         for t in range(self.n_types):
@@ -462,10 +474,10 @@ class BeliefSecurityEnv(BaseEnv):
 
         # return None
 
-        atk_br = self.attacker_strategy_exploiter.run(tas)
+        atk_br = self.attacker_strategy_exploiter.run(tas, self.prior)
         def_br = self.defender_strategy_exploiter.run(tds)
-        atk_u = self.attacker_utility_calculator.run(tas, tds)
-        def_u = self.defender_utility_calculator.run(tas, tds)
+        atk_u = self.attacker_utility_calculator.run(tas, tds, self.prior)
+        def_u = self.defender_utility_calculator.run(tas, tds, self.prior)
 
         # print(def_br)
         # print(atk_u)
@@ -496,18 +508,31 @@ class BeliefSecurityEnv(BaseEnv):
 
         def_eps = atk_br[initial_state] - def_u[initial_state]
 
+        print("BR:", [def_br[t][initial_state] for t in range(self.n_types)], atk_br[initial_state])
+
         print("Overall:", atk_eps, def_eps)
 
-        if verbose:
-            return [atk_result, def_result]
+    def assess_strategies(self, strategies, verbose=False):
+
+        if self.random_prior:
+            for x in range(11):
+                self.prior = np.array([x / 10., (10 - x) / 10.])
+                self._assess_strategies(strategies)
         else:
-            return [[np.sum(np.array(atk_eps) * np.array(self.prior)),
-                     np.sum(atk_pbne_eps * np.array(self.prior))], [def_eps, def_pbne_eps]]
+            self._assess_strategies(strategies)
+
+        if verbose:
+            raise NotImplementedError
+        else:
+            return []
+            # return [[np.sum(np.array(atk_eps) * np.array(self.prior)),
+            #          np.sum(atk_pbne_eps * np.array(self.prior))], [def_eps, def_pbne_eps]]
 
     def get_def_payoff(self, atk_ac, def_ac, prob):
-        ret = 0.
-        for t in range(self.n_types):
-            ret += prob[t] * self.payoff[t, atk_ac, def_ac, 1]
+        # ret = 0.
+        # for t in range(self.n_types):
+        #     ret += prob[t] * self.payoff[t, atk_ac, def_ac, 1]
+        ret = self.payoff[0, atk_ac, def_ac, 1]
         return ret
 
     def get_atk_payoff(self, t, atk_ac, def_ac):
@@ -580,6 +605,7 @@ class BeliefSecurityEnv(BaseEnv):
                     ret = 0.
                     for atk_ac in range(self.n_slots):
                         p = np.sum(atk_strategy_type[atk_ac])
+                        # print("sss", atk_ac, p)
                         prob = atk_strategy_type[atk_ac] / p
                         if p < 1e-5:
                             continue
@@ -590,15 +616,19 @@ class BeliefSecurityEnv(BaseEnv):
                         tmp = self._recursive(next_history, prob)
                         r = self._get_def_payoff(atk_ac, def_ac, prob) + tmp
                         ret += r * p
+                    print(history, def_ac, ret)
                     if ret > max_ret:
                         max_ret = ret
                 self.cache[encoded] = max_ret
+                print(history, prior, max_ret)
                 return max_ret
 
-        def run(self, attacker_strategy):
+        def run(self, attacker_strategy, prior):
             self._reset()
             self.strategy = attacker_strategy
             # self.init_ob = self._convert_to_def_init_ob()
+            # print(self.prior)
+            self.prior = prior
             self._recursive([], self.prior)
             return self.cache
 
@@ -705,10 +735,11 @@ class BeliefSecurityEnv(BaseEnv):
                 self.cache[encoded] = utility
                 return utility
 
-        def run(self, attacker_strategy, defender_strategy):
+        def run(self, attacker_strategy, defender_strategy, prior):
             self._reset()
             self.attacker_strategy = attacker_strategy
             self.defender_strategy = defender_strategy
+            self.prior = prior
             self._recursive([], self.prior)
             return self.cache
 
@@ -756,9 +787,10 @@ class BeliefSecurityEnv(BaseEnv):
                 self.cache[encoded] = utility
                 return utility
 
-        def run(self, attacker_strategy, defender_strategy):
+        def run(self, attacker_strategy, defender_strategy, prior):
             self.attacker_strategy = attacker_strategy
             self.defender_strategy = defender_strategy
+            self.prior = prior
 
             ret = []
             for t in range(self.n_types):

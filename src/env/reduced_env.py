@@ -31,11 +31,15 @@ class ReducedEnv(BaseEnvWrapper):
         return self.action_spaces[0]
 
     def choose_unfixed(self, arr):
+        if arr is None:
+            return None
         # if isinstance(arr, tuple):
         #     return tuple([self.choose_unfixed(_arr) for _arr in arr])
         return [arr[i] for i in self.unfixed_indices]
 
     def choose_fixed(self, arr):
+        if arr is None:
+            return None
         # if isinstance(arr, tuple):
         #     return tuple([self.choose_fixed(_arr) for _arr in arr])
         return [arr[i] for i in self.fixed_indices]
@@ -53,6 +57,8 @@ class ReducedEnv(BaseEnvWrapper):
         return arr
 
     def choose_unfixed_single(self, arr):
+        if arr is None:
+            return None
         # if isinstance(arr, tuple):
         #     return tuple([self.choose_unfixed_single(_arr) for _arr in arr])
         arr = self.choose_unfixed(arr)

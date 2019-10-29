@@ -5,6 +5,7 @@ from agent.dummy_agent import DummyAgent
 from agent.infant_agent import InfantAgent
 from agent.self_play_agent import SelfPlayAgent
 from agent.ppo_agent_backup import PPOAgent
+from agent.ppo_agent_stacked import PPOAgentStacked
 from agent.pac_agent import PACAgent
 from agent.mlp_policy import MLPPolicy
 import seaborn as sns
@@ -42,7 +43,9 @@ def parse_args():
     parser.add_argument('--n-slots', type=int, default=2)
     parser.add_argument('--n-types', type=int, default=2)
     parser.add_argument('--n-rounds', type=int, default=2)
+    parser.add_argument('--beta1', type=float, default=0.5)
     parser.add_argument('--prior', type=float, nargs='+')
+    parser.add_argument('--random-prior', action="store_true")
     parser.add_argument('--reset', action="store_true")
     parser.add_argument('--zero-sum', action="store_true")
     parser.add_argument('--learning-rate', type=float, default=5e-6)
@@ -60,11 +63,12 @@ def parse_args():
     parser.add_argument('--timesteps-per-batch', type=int, default=8)
     parser.add_argument('--iterations-per-round', type=int, default=16)
     parser.add_argument('--exp-name', type=str)
+    parser.add_argument('--sub-load-path', type=str)
 
     return parser.parse_args()
 
 
-def get_make_ppo_agent(reset_every, timesteps_per_actorbatch, max_iterations):
+def get_make_ppo_agent(reset_every, timesteps_per_actorbatch, max_iterations, beta1, n_rounds):
     def make_ppo_agent(observation_space, action_space, steps_per_round, handlers):
         def policy(name, agent_name, ob_space, ac_space):
             # init_ob_space, info_ob_space = ob_space
@@ -75,13 +79,14 @@ def get_make_ppo_agent(reset_every, timesteps_per_actorbatch, max_iterations):
 
         global ppo_agent_cnt
         ob_space = observation_space
-        agent = PPOAgent(name="ppo_agent_%d" % ppo_agent_cnt, policy_fn=policy,
-                         ob_space=ob_space, ac_space=action_space,
-                         handlers=handlers, reset_every=reset_every,
-                         timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0,
-                         optim_epochs=1, optim_stepsize=learning_rate,
-                         gamma=0.99, lam=0.95, max_iters=max_iterations,
-                         schedule=schedule, opponent=opponent)
+        agent = PPOAgentStacked(name="ppo_agent_%d" % ppo_agent_cnt, policy_fn=policy,
+                                ob_space=ob_space, ac_space=action_space,
+                                handlers=handlers, reset_every=reset_every,
+                                timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0,
+                                beta1=beta1, n_rounds=n_rounds,
+                                optim_epochs=1, optim_stepsize=learning_rate,
+                                gamma=0.99, lam=0.95, max_iters=max_iterations,
+                                schedule=schedule, opponent=opponent)
         ppo_agent_cnt += 1
         return agent
     return make_ppo_agent
@@ -159,7 +164,8 @@ if __name__ == "__main__":
                   "belief",
                   agent,
                   "seed:{}".format(seed),
-                  "game:{}-{}-{}-{}".format(n_slots, n_types, n_rounds, ":".join(map(str, prior))),
+                  "game:{}-{}-{}-{}".format(n_slots, n_types, n_rounds, "random" if args.random_prior else ":".join(map(str, prior))),
+                  "beta1:{}".format(args.beta1),
                   "zs" if zero_sum else "gs",
                   "reset" if reset else "no-reset",
                   "{:.0e}".format(Decimal(learning_rate)),
@@ -209,13 +215,13 @@ if __name__ == "__main__":
     for p in [.5]:
         for _ in range(1):
             env = BeliefSecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum,
-                              seed=seed, export_gambit=n_rounds <= 5 and n_slots <= 2)
+                              seed=seed, export_gambit=n_rounds <= 5 and n_slots <= 2, random_prior=args.random_prior)
             # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
             if train:
                 # test_every = 1
                 if agent == "ppo":
-                    agents = [get_make_ppo_agent(reset_every, timesteps_per_batch, iterations_per_round),
-                              get_make_ppo_agent(reset_every, timesteps_per_batch, iterations_per_round)]
+                    agents = [get_make_ppo_agent(reset_every, timesteps_per_batch, iterations_per_round, beta1=args.beta1, n_rounds=args.n_rounds),
+                              get_make_ppo_agent(reset_every, timesteps_per_batch, iterations_per_round, beta1=args.beta1, n_rounds=args.n_rounds)]
                 elif agent == "pac":
                     agents = [get_make_pac_agent(timesteps_per_batch, iterations_per_round),
                               get_make_pac_agent(timesteps_per_batch, iterations_per_round)]
@@ -227,6 +233,7 @@ if __name__ == "__main__":
                                      test_every=test_every,  test_max_steps=test_steps,
                                      record_assessment=True, reset=reset,
                                      load_state=load, load_path=join_path(exp_dir, "step-{}".format(load_step)),
+                                     sub_load_path=args.sub_load_path,
                                      save_every=save_every, save_path=exp_dir, store_results=False)
                 env.export_settings(join_path_and_check(exp_dir, "env_settings.obj"))
                 assessments = train_result["assessments"]
