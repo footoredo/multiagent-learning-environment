@@ -449,6 +449,7 @@ class BeliefSecurityEnv(BaseEnv):
                 for a in range(self.n_slots):
                     prob = [attacker_strategy.prob(self._get_atk_ob(xt, belief, len(history)), a)
                             for xt in range(self.n_types)]
+                    # print(prob)
                     s.update(convert(self.update_belief(belief, prob), history + [a]))
             return s
 
