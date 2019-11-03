@@ -68,8 +68,8 @@ class RecurrentPolicy(object):
                                                           kernel_initializer=U.normc_initializer(1.0)))
                 tpparam = tf.layers.dense(last_out, tppdtype.param_shape()[0], name='final', kernel_initializer=U.normc_initializer(0.01))
 
-        self.tp = tppdtype.pdfromflat(tpparam)
-        self._tpred = U.function([init_ob, info_ob, add_ob], self.tp.mean)
+                self.tp = tppdtype.pdfromflat(tpparam)
+                self._tpred = U.function([init_ob, info_ob, add_ob], self.tp.mean)
 
         obz = tf.concat([last_out, d], axis=-1)
 
