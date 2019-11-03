@@ -13,7 +13,6 @@ from baselines.common.mpi_moments import mpi_moments
 from mpi4py import MPI
 import json
 from common.path_utils import *
-from .replay_buffer import ReplayBuffer
 
 
 def trim_name(name):
@@ -93,7 +92,7 @@ class PPOAgentStacked(BaseAgent):
               optim_epochs, optim_stepsize,  # optimization hypers
               beta1,
               gamma, lam,  # advantage estimation
-              n_rounds,
+              n_rounds, n_types,
               max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
               callback=None,  # you can do anything in the callback, since it takes locals(), globals()
               adam_epsilon=1e-5,
@@ -134,18 +133,6 @@ class PPOAgentStacked(BaseAgent):
         prob = tf.placeholder(dtype=tf.float32, shape=[None])  # Visiting probability
         ret = tf.placeholder(dtype=tf.float32, shape=[None])  # Empirical return
 
-        self.sample_pi_size = 100
-
-        self.sample_pi = []
-        self.assign_sp_eq_new = []
-        # for i in range(self.sample_pi_size):
-        #     self.sample_pi.append(policy_fn("samplepi%d" % i,  self.name, ob_space, ac_space))
-        #     self.assign_sp_eq_new.append(U.function([], [], updates=[tf.assign(curv, newv)
-        #                                                              for (curv, newv) in
-        #                                                              zipsame(self.sample_pi[i].get_variables(),
-        #                                                                      pi.get_variables())]))
-        self.sample_pi_now = 0
-
         lrmult = tf.placeholder(name='lrmult', dtype=tf.float32,
                                 shape=[])  # learning rate multiplier, updated with schedule
 
@@ -164,10 +151,8 @@ class PPOAgentStacked(BaseAgent):
         surr2 = tf.clip_by_value(ratio, 1.0 - clip_param, 1.0 + clip_param) * new_targ  #
         pol_surr = - tf.reduce_mean(tf.minimum(surr1, surr2))  # PPO's pessimistic surrogate (L^CLIP)
         # pol_surr = tf.reduce_mean(pi.pd.logp(ac) * atarg)
-        # ffloss = - tf.reduce_mean(pi.pd.logp(ac) * atarg)
         vf_loss = tf.reduce_mean(tf.square(pi.vpred - ret))
         total_loss = pol_surr + pol_entpen + vf_loss
-        # total_loss = ffloss + vf_loss
         losses = [pol_surr, pol_entpen, vf_loss, meankl, meanent]
         loss_names = ["pol_surr", "pol_entpen", "vf_loss", "kl", "ent"]
 
@@ -175,13 +160,6 @@ class PPOAgentStacked(BaseAgent):
         lossandgrad = U.function([ob, ac, atarg, prob, ret, lrmult], losses + [U.flatgrad(total_loss, var_list)])
         adam = MpiAdam(var_list, epsilon=adam_epsilon, beta1=beta1)
         # adam =
-
-        avg_var_list = avgpi.get_trainable_variables()
-        avg_loss = tf.reduce_mean(avgpi.pd.logp(ac))
-        # avg_grad = U.function([ob, ac], [U.flatgrad(avg_loss, avg_var_list)])
-        avg_lr = tf.placeholder(dtype=tf.float32, shape=[])
-        avg_adam = tf.train.AdamOptimizer(learning_rate=avg_lr)
-        avg_train = U.function([ob, ac, avg_lr], [avg_adam.minimize(avg_loss, var_list=avg_var_list)])
 
         assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)
                                                         for (oldv, newv) in
@@ -192,10 +170,6 @@ class PPOAgentStacked(BaseAgent):
                                                                     tf.multiply(newv, avg_alpha))
                                                         for (avgv, newv) in
                                                         zipsame(avgpi.get_trainable_variables(), pi.get_trainable_variables())])
-
-        assign_new_eq_avg = U.function([], [], updates=[tf.assign(oldv, newv)
-                                                        for (oldv, newv) in
-                                                        zipsame(pi.get_variables(), avgpi.get_variables())])
 
         self.pi_cnt = 0
         self.curpi = self.policy_fn("curpi%d" % self.pi_cnt, self.name, self.ob_space,
@@ -211,7 +185,6 @@ class PPOAgentStacked(BaseAgent):
         adam.sync()
         self.cnt = 1
         update_avg(1. / self.cnt)
-        # self.assign_sp_eq_new[0]()
         self.assign_cur_eq_new()
 
         self.gamma = gamma
@@ -221,9 +194,6 @@ class PPOAgentStacked(BaseAgent):
 
         self.average_utility = 0.0
         self.tot = 0
-
-        self.replay_buffer = ReplayBuffer(5, int(1e5))
-
 
         def train_phase(i, statistics: Statistics, progress, ep_i):
             # print(self.scope + ("avg util: %.5f" % self.average_utility))
@@ -271,10 +241,6 @@ class PPOAgentStacked(BaseAgent):
                 # ob, ac, atarg, ret, td1ret = map(np.concatenate, (obs, acs, atargs, rets, td1rets))
                 # logger.log(seg["rew"])
                 ob, ac, atarg, tdlamret, prob = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"], seg["prob"]
-
-                for i in range(len(ob)):
-                    self.replay_buffer.add((ob[i], ac[i], atarg[i], tdlamret[i], prob[i]))
-
                 # print(ob, ac, seg["rew"], seg["vpred"])
                 # print(prob)
                 # logger.log(atarg)
@@ -401,27 +367,11 @@ class PPOAgentStacked(BaseAgent):
                 #     logger.dump_tabular()
 
             # print(time.time() - tstart)
-
-            if ep_i % 1 == 0:
-                self.cnt += 1
-                # if self.sample_pi_now < self.sample_pi_size:
-                #     self.assign_sp_eq_new[self.sample_pi_now]()
-                #     self.sample_pi_now += 1
-                # elif np.random.rand() < self.sample_pi_size / self.cnt:
-                #     self.assign_sp_eq_new[np.random.randint(self.sample_pi_size)]()
-
-                update_avg(1. / self.cnt)
-
-            # if ep_i == 2000:
-            #     assign_new_eq_avg()
-            #     self.cnt = 1
-
-            # ob, ac, atarg, tdlamret, prob = self.replay_buffer.sample(max_timesteps)
-            # avg_train(ob, ac, optim_stepsize / self.cnt)
-
+            self.cnt += 1
+            update_avg(1. / self.cnt)
             # update_avg(0.9)
             self.assign_cur_eq_new()
-            self.push(self._get_policy(self.curpi), self.get_avg_policy())
+            self.push(self._get_policy(self.curpi), self._get_policy(avgpi))
             env.update_policies(self._get_policy())
             del env
             return {
@@ -601,28 +551,8 @@ class PPOAgentStacked(BaseAgent):
     def get_initial_policy(self):
         return self._get_policy()
 
-    def get_avg_policy(self, cnt=1):
+    def get_avg_policy(self):
         return self._get_policy(self.avgpi)
-        # def act_fn(ob):
-        #     ob, round = ob[:-self.n_rounds], self.get_round(ob[-self.n_rounds:])
-        #     if round > 0:
-        #         return self.subpis[round - 1].act(stochastic=True, ob=ob)
-        #     else:
-        #
-        #     truepi = self.sample_pi if round == 0 else self.subpis[round - 1]
-        #     return truepi[np.random.randint(cnt)]
-        #
-        # def prob_fn(ob, ac):
-        #     ob, round = ob[:-self.n_rounds], self.get_round(ob[-self.n_rounds:])
-        #     truepi = self.sample_pi if round == 0 else self.subpis[round - 1]
-        #     return truepi[np.random.randint(cnt)].prob(ob=ob, ac=ac)
-        #
-        # def strategy_fn(ob):
-        #     ob, round = ob[:-self.n_rounds], self.get_round(ob[-self.n_rounds:])
-        #     truepi = self.sample_pi if round == 0 else self.subpis[round - 1]
-        #     return truepi[np.random.randint(cnt)].strategy(ob=ob)
-        #
-        # return Policy(act_fn, prob_fn, strategy_fn)
 
     def get_final_policy(self):
         return self._get_policy()

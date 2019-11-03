@@ -7,7 +7,8 @@ from agent.self_play_agent import SelfPlayAgent
 from agent.ppo_agent_recurrent import PPOAgent
 from agent.pac_agent import PACAgent
 from agent.mlp_policy import MLPPolicy
-from agent.recurrent_policy import RecurrentPolicy
+# from agent.recurrent_policy import RecurrentPolicy
+from agent.recurrent_policy_tpred import RecurrentPolicy
 import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -54,27 +55,29 @@ def parse_args():
     parser.add_argument('--timesteps-per-batch', type=int, default=8)
     parser.add_argument('--iterations-per-round', type=int, default=16)
     parser.add_argument('--exp-name', type=str)
+    parser.add_argument('--other', type=str, default='')
 
     return parser.parse_args()
 
 
 def get_make_ppo_agent(timesteps_per_actorbatch, max_iterations, n_rounds, steps_per_round):
-    def make_ppo_agent(observation_space, action_space, handlers):
-        def policy(name, agent_name, init_ob_space, info_ob_space, add_ob_space, ac_space):
+    def make_ppo_agent(observation_space, action_space, type_space, handlers):
+        def policy(name, agent_name, init_ob_space, info_ob_space, add_ob_space, ac_space, tp_space):
             # init_ob_space, info_ob_space = ob_space
             # return MLPPolicy(name=name, agent_name=agent_name, ob_space=ob_space, ac_space=ac_space,
             #                  hid_size=256, num_hid_layers=4)
             return RecurrentPolicy(name=name, agent_name=agent_name, init_ob_space=init_ob_space,
                                    info_ob_space=info_ob_space, add_ob_space=add_ob_space, ac_space=ac_space,
+                                   tp_space=tp_space,
                                    hid_size=network_width, num_hid_layers=network_depth)
 
         global ppo_agent_cnt
         init_ob_space, info_ob_space, add_ob_space = observation_space
         agent = PPOAgent(name="ppo_agent_%d" % ppo_agent_cnt, policy_fn=policy,
                          init_ob_space=init_ob_space, info_ob_space=info_ob_space, add_ob_space=add_ob_space,
-                         ac_space=action_space, n_rounds=n_rounds, steps_per_round=steps_per_round, handlers=handlers,
+                         ac_space=action_space, n_rounds=n_rounds, tp_space=type_space, steps_per_round=steps_per_round, handlers=handlers,
                          timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0,
-                         optim_epochs=1, optim_stepsize=learning_rate, beta1=0.5,
+                         optim_epochs=1, optim_stepsize=learning_rate, beta1=0.9,
                          gamma=0.99, lam=0.95, reset_every=0, max_iters=max_iterations,
                          schedule="constant", opponent="latest")
         ppo_agent_cnt += 1
@@ -117,7 +120,7 @@ if __name__ == "__main__":
     result_folder = "../result/"
     plot_folder = "../plots/"
     exp_name = args.exp_name or \
-        "_".join(["deceive",
+        "_".join(["deceive" + str(args.other),
                   "recurrent",
                   agent,
                   "game:{}-{}-{}-{}".format(n_targets, n_rounds, steps_per_round, ":".join(map(str, prior))),
@@ -158,7 +161,7 @@ if __name__ == "__main__":
     #     s = 0.
     #     T = 10
     #     for _ in range(T):
-    res = {"episode": [], "assessment": [], "current_assessments": [], "player": []}
+    res = {"episode": [], "current_assessments": [], "player": []}
 
     for p in [.5]:
         for _ in range(1):
@@ -184,28 +187,16 @@ if __name__ == "__main__":
                 joblib.dump(local_results, join_path_and_check(exp_dir, "local_results.obj"))
                 joblib.dump(train_info, join_path_and_check(exp_dir, "train_info.obj"))
                 # joblib.dump(train_result["local_"], join_path_and_check(exp_dir, "final_assessment.obj"))
-                print(assessments)
-                print(train_result["random_assessment"])
+                # print(assessments)
+                # print(train_result["random_assessment"])
                 for i in range(test_every, max_steps + 1, test_every):
                     res["episode"].append(i)
-                    res["assessment"].append(assessments[i // test_every - 1][0][0])
-                    res["current_assessments"].append(current_assessments[i // test_every - 1][0][0])
+                    res["current_assessments"].append(current_assessments[i // test_every - 1][0])
                     res["player"].append("attacker")
 
                     res["episode"].append(i)
-                    res["assessment"].append(assessments[i // test_every - 1][1][0])
-                    res["current_assessments"].append(current_assessments[i // test_every - 1][1][0])
+                    res["current_assessments"].append(current_assessments[i // test_every - 1][1])
                     res["player"].append("defender")
-
-                    res["episode"].append(i)
-                    res["assessment"].append(assessments[i // test_every - 1][0][1])
-                    res["current_assessments"].append(current_assessments[i // test_every - 1][0][1])
-                    res["player"].append("attacker PBNE")
-
-                    res["episode"].append(i)
-                    res["assessment"].append(assessments[i // test_every - 1][1][1])
-                    res["current_assessments"].append(current_assessments[i // test_every - 1][1][1])
-                    res["player"].append("defender PBNE")
             else:
                 pass
                 # lie_p = env.get_lie_prob()
@@ -220,9 +211,9 @@ if __name__ == "__main__":
     joblib.dump(res, join_path_and_check(exp_dir, "result.obj"))
     df = pd.DataFrame(data=res)
     sns.set()
-    sns.lineplot(x="episode", y="assessment", hue="player", data=df)
-    plt.savefig(join_path_and_check(plot_dir, "result.png"), dpi=800)
-    plt.show()
+    # sns.lineplot(x="episode", y="assessment", hue="player", data=df)
+    # plt.savefig(join_path_and_check(plot_dir, "result.png"), dpi=800)
+    # plt.show()
     sns.lineplot(x="episode", y="current_assessments", hue="player", data=df)
     plt.savefig(join_path_and_check(plot_dir, "current_result.png"), dpi=800)
     plt.show()

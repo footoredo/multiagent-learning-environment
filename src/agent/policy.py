@@ -2,10 +2,11 @@ import random
 
 
 class Policy(object):
-    def __init__(self, act_fn, prob_fn=None, strategy_fn=None):
+    def __init__(self, act_fn, prob_fn=None, strategy_fn=None, tpred_fn=None):
         self.act_fn = act_fn
         self.prob_fn = prob_fn
         self.strategy_fn = strategy_fn
+        self.tpred_fn = tpred_fn
 
     def strategy(self, obs):
         return self.strategy_fn(obs)
@@ -28,6 +29,9 @@ class Policy(object):
 
     def prob(self, obs, ac):
         return self.prob_fn(obs, ac)
+
+    def tpred(self, ob):
+        return self.tpred_fn(ob)
 
 
 class MixedPolicy(Policy):

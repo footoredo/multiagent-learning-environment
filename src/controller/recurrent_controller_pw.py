@@ -89,6 +89,7 @@ class NaiveController(BaseController):
         env = self.env
         self.agents = [agent_fn(observation_space=env.get_observation_space(i),
                                 action_space=env.get_action_space(i),
+                                type_space=env.get_type_space(i),
                                 handlers=self.get_handlers(i))
                        for i, agent_fn in enumerate(self.agent_fns)]
         for agent in self.agents:
@@ -150,10 +151,10 @@ class NaiveController(BaseController):
                     # assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
                     #                                          for i in range(self.num_agents)])
                     print("Average network")
-                    assessment = self.env.assess_strategies([self.avg_policy[i].strategy_fn
+                    assessment = self.env.assess_strategies([self.avg_policy[i]
                                                              for i in range(self.num_agents)])
                     print("Current")
-                    current_assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
+                    current_assessment = self.env.assess_strategies([self.latest_policy[i]
                                                              for i in range(self.num_agents)])
                     # assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
                     #                                          for i in range(self.num_agents)])
@@ -161,7 +162,7 @@ class NaiveController(BaseController):
                     #     assessment.append(self.env.assess_strategy(i, self.statistics.get_avg_strategy(i)))
                     # exp[0] += 0.633
                     # exp[1] += 2.387
-                    assessments.append(assessment)
+                    # assessments.append(assessment)
                     current_assessments.append(current_assessment)
                     print("Average assessment:", assessment)
                     print("Current assessment:", current_assessment)
@@ -175,13 +176,23 @@ class NaiveController(BaseController):
                 self.show()
 
             if check_every(save_every):
-                self.save(join_path_and_check(save_path, "step-{}".format(self.step)))
+                step_save_path = join_path_and_check(save_path, "step-{}".format(self.step))
+                for i in range(10):
+                    self.env.simulate([self.avg_policy[i] for i in range(self.num_agents)], verbose=True,
+                                      save_dir=join_path_and_check(step_save_path, "avg-{}.gif".format(i)))
+                for i in range(10):
+                    self.env.simulate([self.latest_policy[i] for i in range(self.num_agents)], verbose=True,
+                                      save_dir=join_path_and_check(step_save_path, "ltt-{}.gif".format(i)))
+                self.save(step_save_path)
 
         if record_assessment:
-            final_assessment = self.env.assess_strategies([self.avg_policy[i].strategy_fn
-                                                           for i in range(self.num_agents)], verbose=True)
+            for i in range(5):
+                self.env.simulate([self.latest_policy[i] for i in range(self.num_agents)], verbose=True,
+                                  save_dir=join_path_and_check(save_path, "eval-{}.gif".format(i)))
+            final_assessment = self.env.assess_strategies([self.latest_policy[i]
+                                                           for i in range(self.num_agents)], trials=1000)
             self.records["final_assessment"] = final_assessment
-            self.records["random_assessment"] = random_assessment
+            # self.records["random_assessment"] = random_assessment
 
         # self.run_benchmark(10000)
         return self.records, local_results, train_info

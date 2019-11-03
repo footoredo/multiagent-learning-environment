@@ -39,6 +39,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run security game.")
 
     parser.add_argument('--seed', type=str)
+    parser.add_argument('--other', type=str, default="default")
     parser.add_argument('--agent', type=str, default="ppo")
     parser.add_argument('--n-slots', type=int, default=2)
     parser.add_argument('--n-types', type=int, default=2)
@@ -162,6 +163,7 @@ if __name__ == "__main__":
     exp_name = args.exp_name or \
         "_".join(["security",
                   "belief",
+                  # args.other,
                   agent,
                   "seed:{}".format(seed),
                   "game:{}-{}-{}-{}".format(n_slots, n_types, n_rounds, "random" if args.random_prior else ":".join(map(str, prior))),

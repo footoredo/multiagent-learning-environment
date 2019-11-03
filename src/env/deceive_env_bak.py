@@ -34,7 +34,7 @@ class DeceiveEnv(BaseEnv):
         self.round = None
         self.last_obs_n = None
 
-        atk_init_ob_space = spaces.Box(low=0., high=1., shape=[n_targets])
+        atk_init_ob_space = spaces.Box(low=0., high=1., shape=[n_targets * 2])
         dfd_init_ob_space = spaces.Box(low=0., high=1., shape=[n_targets])
 
         self.ob_length = ob_length = 2 * (2 + n_targets)
@@ -43,7 +43,7 @@ class DeceiveEnv(BaseEnv):
         atk_info_ob_space = spaces.Box(low=0., high=1., shape=[steps_per_round * (ob_length + ac_length) * 2])
         dfd_info_ob_space = spaces.Box(low=0., high=1., shape=[steps_per_round * (ob_length + ac_length) * 2])
 
-        atk_add_ob_space = spaces.Box(low=0., high=1., shape=[n_targets + ob_length + steps_per_round])
+        atk_add_ob_space = spaces.Box(low=0., high=1., shape=[ob_length + steps_per_round])
         dfd_add_ob_space = spaces.Box(low=0., high=1., shape=[ob_length + steps_per_round])
 
         atk_ob_space = (atk_init_ob_space, atk_info_ob_space, atk_add_ob_space)
@@ -58,8 +58,7 @@ class DeceiveEnv(BaseEnv):
         self.goal = None
 
     def _get_atk_init_ob(self):
-        # return np.concatenate([self.prior, one_hot(self.n_targets, self.goal)])
-        return self.prior
+        return np.concatenate([self.prior, one_hot(self.n_targets, self.goal)])
 
     def _get_dfd_init_ob(self):
         return self.prior
@@ -75,7 +74,7 @@ class DeceiveEnv(BaseEnv):
         atk_init_ob = self._get_atk_init_ob()
         dfd_init_ob = self._get_dfd_init_ob()
 
-        atk_add_ob = np.concatenate([one_hot(self.n_targets, self.goal), obs_n[0], one_hot(self.steps_per_round, step)])
+        atk_add_ob = np.concatenate([obs_n[0], one_hot(self.steps_per_round, step)])
         dfd_add_ob = np.concatenate([obs_n[1], one_hot(self.steps_per_round, step)])
 
         atk_info_ob = dfd_info_ob = self._get_info_ob(history)
@@ -135,8 +134,7 @@ class DeceiveEnv(BaseEnv):
                self.round >= self.n_rounds, [sub_done, sub_done], [atk_touching, dfd_touching]
 
     def simulate(self, strategies, verbose=False, save_dir=None):
-        atk_policy, dfd_policy = strategies
-        atk_strategy, dfd_strategy = atk_policy.strategy_fn, dfd_policy.strategy_fn
+        atk_strategy, dfd_strategy = strategies
         ob, _, _ = self.reset()
         atk_rew = 0.
         dfd_rew = 0.
@@ -159,9 +157,6 @@ class DeceiveEnv(BaseEnv):
                 print("Round {} Step {}".format(steps, sub_steps))
                 print("Attacker: {} -> {}".format(atk_s, atk_a))
                 print("Defender: {} -> {}".format(dfd_s, dfd_a))
-                if sub_steps == 0:
-                    print("tpred:", atk_policy.tpred(ob[0]))
-                    print("tpred:", dfd_policy.tpred(ob[1]))
             ob, rew, _, done, sub_done, touching = self.step([atk_a, dfd_a], None)
             sub_steps += 1
             at, dt = touching
@@ -181,14 +176,6 @@ class DeceiveEnv(BaseEnv):
             dfd_rew += rew[1]
             if done:
                 break
-
-        atk_same = True
-        dfd_same = True
-        atk_choice_0 = np.argmax(atk_touching[0])
-        for i in range(1, self.n_rounds):
-            atk_same = atk_same and np.argmax(atk_touching[i]) == atk_choice_0
-            dfd_same = dfd_same and np.argmax(dfd_touching[i]) == atk_choice_0
-
         if verbose:
             print("Simulation ends.", [atk_rew, dfd_rew])
             imageio.mimsave(save_dir, frames, duration=1 / 5)
@@ -197,21 +184,17 @@ class DeceiveEnv(BaseEnv):
 
         atk_touching = [[atk_touching[i][self.goal], sum(atk_touching[i])] for i in range(self.n_rounds)]
         dfd_touching = [[dfd_touching[i][self.goal], sum(dfd_touching[i])] for i in range(self.n_rounds)]
-        return atk_rew, dfd_rew, atk_touching, dfd_touching, atk_same, dfd_same
+        return atk_rew, dfd_rew, atk_touching, dfd_touching
 
     def assess_strategies(self, strategies, trials=100, debug=False):
         atk_rew = 0.
         dfd_rew = 0.
         atk_right = [[0, 0] for _ in range(self.n_rounds)]
         dfd_right = [[0, 0] for _ in range(self.n_rounds)]
-        atk_same = 0
-        dfd_same = 0
         for _ in range(trials):
-            a, d, at, dt, _as, ds = self.simulate(strategies, verbose=False)
+            a, d, at, dt = self.simulate(strategies, verbose=False)
             atk_rew += a
             dfd_rew += d
-            atk_same += _as
-            dfd_same += ds
             for i in range(self.n_rounds):
                 for j in range(2):
                     atk_right[i][j] += at[i][j]
@@ -219,8 +202,6 @@ class DeceiveEnv(BaseEnv):
 
         print("Attacker rights:", np.array(atk_right) / trials)
         print("Defender rights:", np.array(dfd_right) / trials)
-        print("Attacker same:", atk_same / trials)
-        print("Defender same:", dfd_same / trials)
         print("Attacker reward:", atk_rew / trials)
         print("Defender reward:", dfd_rew / trials)
 
