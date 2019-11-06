@@ -39,6 +39,7 @@ def parse_args():
 
     parser.add_argument('--seed', type=int)
     parser.add_argument('--agent', type=str, default="ppo")
+    parser.add_argument('--other', type=str, default="")
     parser.add_argument('--n-slots', type=int, default=2)
     parser.add_argument('--n-types', type=int, default=2)
     parser.add_argument('--n-rounds', type=int, default=2)
@@ -191,7 +192,7 @@ if __name__ == "__main__":
 
     result_folder = "../result/"
     exp_name = args.exp_name or \
-        "_".join(["security",
+        "_".join(["security" + args.other,
                   agent,
                   "seed:{}".format(seed),
                   "game:{}-{}-{}-{}".format(n_slots, n_types, n_rounds, ":".join(map(str, prior))),
@@ -243,7 +244,7 @@ if __name__ == "__main__":
         for _ in range(1):
             env = SecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum,
                               seed=seed, export_gambit=n_rounds <= 5 and n_slots <= 2)
-            # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
+            env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
             if train:
                 # test_every = 1
                 if agent == "ppo":

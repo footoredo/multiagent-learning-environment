@@ -121,8 +121,8 @@ class PPOAgent(BaseAgent):
         pol_surr = - tf.reduce_mean(tf.minimum(surr1, surr2))  # PPO's pessimistic surrogate (L^CLIP)
         # pol_surr = tf.reduce_mean(pi.pd.logp(ac) * atarg)
         vf_loss = tf.reduce_mean(tf.square(pi.vpred - ret))
-        tp_loss = - tf.reduce_mean(tf.exp(pi.tp.logp(tp)))
-        # tp_loss = 0.
+        # tp_loss = - tf.reduce_mean(tf.exp(pi.tp.logp(tp)))
+        tp_loss = 0.
         total_loss = pol_surr + pol_entpen + vf_loss + tp_loss
         losses = [pol_surr, pol_entpen, vf_loss, meankl, meanent]
         loss_names = ["pol_surr", "pol_entpen", "vf_loss", "kl", "ent"]

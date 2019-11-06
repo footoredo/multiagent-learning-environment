@@ -104,7 +104,7 @@ class PPOAgent(BaseAgent):
 
         var_list = pi.get_trainable_variables()
         lossandgrad = U.function([ob, ac, atarg, prob, ret, lrmult], losses + [U.flatgrad(total_loss, var_list)])
-        adam = MpiAdam(var_list, epsilon=adam_epsilon, beta1=0.5)
+        adam = MpiAdam(var_list, epsilon=adam_epsilon, beta1=0.9)
         # adam =
 
         assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)

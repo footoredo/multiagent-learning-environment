@@ -197,6 +197,13 @@ class SecurityEnv(BaseEnv):
             self.gambit_solver = GambitSolver(n_slots=n_slots, n_types=n_types, n_stages=n_rounds, payoff=self.payoff, prior=self.prior)
             self.gambit_solver.generate()
 
+        self.attacker_average_policy = None
+        self.defender_average_policy = None
+        self.attacker_average_policy_counter = None
+        self.defender_average_policy_counter = None
+        self.initialize_attacker_average_policy()
+        self.initialize_defender_average_policy()
+
         self.attacker_strategy_exploiter = self._AttackerStrategyExploiter(self)
         self.defender_strategy_exploiter = self._DefenderStrategyExploiter(self)
         self.attacker_utility_calculator = self._AttackerUtilityCalculator(self)
@@ -251,6 +258,32 @@ class SecurityEnv(BaseEnv):
 
     def _get_atk_ob(self, base_ob):
         return np.concatenate((self.type_ob, base_ob))
+
+    def base_ob_to_h(self, base_ob):
+        s = 0
+        h = []
+        for i in range(self.n_rounds - 1):
+            a = 0
+            for j in range(self.n_slots + 1):
+                if base_ob[s + j] > 0.5:
+                    a = j
+                    break
+            if a == self.n_slots:
+                break
+            h.append(a)
+            s += self.n_slots + 1
+        return h
+
+    def atk_ob_to_t_h(self, atk_ob):
+        t = 0
+        for i in range(self.n_types):
+            if atk_ob[i] > 0.5:
+                t = i
+                break
+        return t, self.base_ob_to_h(atk_ob[self.n_types:])
+
+    def dfd_ob_to_h(self, dfd_ob):
+        return self.base_ob_to_h(dfd_ob)
 
     def _get_ob(self):
         base_ob = self._get_base_ob()
@@ -356,6 +389,15 @@ class SecurityEnv(BaseEnv):
             ret = ret * b + a + 1
         return ret
 
+    def encode_type_history(self, t, history):
+        if self.record_def:
+            raise NotImplementedError
+        b = self.n_slots + 1
+        ret = 0
+        for a in history:
+            ret = ret * b + a + 1
+        return ret * self.n_types + t
+
     def decode_history(self, encoded_history):
         history = []
         b = self.n_slots + 1
@@ -363,6 +405,16 @@ class SecurityEnv(BaseEnv):
             history.append(encoded_history % b - 1)
             encoded_history //= b
         return list(reversed(history))
+
+    def decode_type_history(self, encoded):
+        t = encoded % self.n_types
+        encoded //= self.n_types
+        history = []
+        b = self.n_slots + 1
+        while encoded > 0:
+            history.append(encoded % b - 1)
+            encoded //= b
+        return t, history
 
     def show_attacker_strategy(self, strategy):
         def show(t, history):
@@ -445,6 +497,74 @@ class SecurityEnv(BaseEnv):
     def get_atk_payoff(self, t, atk_ac, def_ac):
         return self.payoff[t, atk_ac, def_ac, 0]
 
+    def initialize_attacker_average_policy(self):
+        ap = self.attacker_average_policy = dict()
+        self.attacker_average_policy_counter = 0
+
+        def recursive(t, h):
+            ap[self.encode_type_history(t, h)] = np.zeros(self.n_slots)
+            if len(h) < self.n_rounds - 1:
+                for a in range(self.n_slots):
+                    recursive(t, h + [a])
+
+        for tt in range(self.n_types):
+            recursive(tt, [])
+
+    def initialize_defender_average_policy(self):
+        dp = self.defender_average_policy = dict()
+        self.defender_average_policy_counter = 0
+
+        def recursive(h):
+            dp[self.encode_history(h)] = np.zeros(self.n_slots)
+            if len(h) < self.n_rounds - 1:
+                for a in range(self.n_slots):
+                    recursive(h + [a])
+
+        recursive([])
+        
+    def update_attacker_average_policy(self, p):
+        ap = self.attacker_average_policy
+        self.attacker_average_policy_counter += 1
+        cnt = self.attacker_average_policy_counter
+        
+        def recursive(t, h):
+            encoded = self.encode_type_history(t, h)
+            ob = self.convert_to_atk_ob(h, t)
+            ap[encoded] = ap[encoded] * (cnt - 1) / cnt + p(ob) / cnt
+            if len(h) < self.n_rounds - 1:
+                for a in range(self.n_slots):
+                    recursive(t, h + [a])
+
+        for tt in range(self.n_types):
+            recursive(tt, [])
+
+    def update_defender_average_policy(self, p):
+        dp = self.defender_average_policy
+        self.defender_average_policy_counter += 1
+        cnt = self.defender_average_policy_counter
+
+        def recursive(h):
+            encoded = self.encode_history(h)
+            ob = self.convert_to_def_ob(h)
+            dp[encoded] = dp[encoded] * (cnt - 1) / cnt + p(ob) / cnt
+            if len(h) < self.n_rounds - 1:
+                for a in range(self.n_slots):
+                    recursive(h + [a])
+
+        recursive([])
+
+    def get_attacker_average_policy(self):
+        def strategy(ob):
+            t, h = self.atk_ob_to_t_h(ob)
+            return self.attacker_average_policy[self.encode_type_history(t, h)]
+        return strategy
+
+    def get_defender_average_policy(self):
+        def strategy(ob):
+            h = self.dfd_ob_to_h(ob)
+            return self.defender_average_policy[self.encode_history(h)]
+        return strategy
+        
     def _convert_to_type_ob(self, t):
         ob = np.zeros(shape=self.n_types)
         ob[t] = 1.0

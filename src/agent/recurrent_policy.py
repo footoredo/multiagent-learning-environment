@@ -67,7 +67,8 @@ class RecurrentPolicy(object):
 
         self.tp = tppdtype.pdfromflat(tpparam)
 
-        obz = tf.concat([last_out, d], axis=-1)
+        # obz = tf.concat([last_out, d], axis=-1)
+        obz = d
 
         with tf.variable_scope('vf'):
             # obz = tf.clip_by_value((ob - self.ob_rms.mean) / self.ob_rms.std, -5.0, 5.0)

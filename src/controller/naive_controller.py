@@ -160,6 +160,8 @@ class NaiveController(BaseController):
                     train_info[i].append(agent.train(i, self.statistics, self.step / max_steps, self.step))
 
             self.step += 1
+            self.env.update_attacker_average_policy(self.latest_policy[0].strategy_fn)
+            self.env.update_defender_average_policy(self.latest_policy[1].strategy_fn)
 
             if reset and self.step / max_steps > .3:
                 self.statistics.reset()
@@ -167,9 +169,9 @@ class NaiveController(BaseController):
                 reset = False
             if check_every(test_every):
                 local_result, global_result = self.run_test(test_max_steps)
-                # if store_results:
-                local_results.append(local_result)
-                global_results.append(global_result)
+                if store_results:
+                    local_results.append(local_result)
+                    global_results.append(global_result)
                 if record_assessment:
                     # rews = self.run_benchmark(1000)
                     print("current")
@@ -181,6 +183,9 @@ class NaiveController(BaseController):
                     print("avg")
                     assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
                                                              for i in range(self.num_agents)])
+                    print("true avg")
+                    assessment = self.env.assess_strategies([self.env.get_attacker_average_policy(),
+                                                             self.env.get_defender_average_policy()])
                     # for i in range(self.num_agents):
                     #     assessment.append(self.env.assess_strategy(i, self.statistics.get_avg_strategy(i)))
                     # exp[0] += 0.633

@@ -176,15 +176,15 @@ if __name__ == "__main__":
     network_depth = args.network_depth
     timesteps_per_batch = args.timesteps_per_batch
     iterations_per_round = args.iterations_per_round
+    print(iterations_per_round)
     reset_every = args.reset_every
     # other = "1000-test-steps-large-network"
 
     result_folder = "../result/"
     plot_folder = "../plots/"
     exp_name = args.exp_name or \
-        "_".join(["security",
+        "_".join(["security" + args.other,
                   "recurrent",
-                  args.other,
                   agent,
                   "seed:{}".format(seed),
                   "game:{}-{}-{}-{}".format(n_slots, n_types, n_rounds, ":".join(map(str, prior))),

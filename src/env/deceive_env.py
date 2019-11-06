@@ -1,5 +1,5 @@
 from env.base_env import BaseEnv
-from .scenario.deceive import Scenario
+from .scenario.deceive_grid import Scenario
 from multiagent.environment import MultiAgentEnv
 from agent.policy import Policy
 from gym import spaces
@@ -43,8 +43,8 @@ class DeceiveEnv(BaseEnv):
         atk_info_ob_space = spaces.Box(low=0., high=1., shape=[steps_per_round * (ob_length + ac_length) * 2])
         dfd_info_ob_space = spaces.Box(low=0., high=1., shape=[steps_per_round * (ob_length + ac_length) * 2])
 
-        atk_add_ob_space = spaces.Box(low=0., high=1., shape=[n_targets + ob_length + steps_per_round])
-        dfd_add_ob_space = spaces.Box(low=0., high=1., shape=[ob_length + steps_per_round])
+        atk_add_ob_space = spaces.Box(low=0., high=1., shape=[n_targets + ob_length + 1])
+        dfd_add_ob_space = spaces.Box(low=0., high=1., shape=[ob_length + 1])
 
         atk_ob_space = (atk_init_ob_space, atk_info_ob_space, atk_add_ob_space)
         dfd_ob_space = (dfd_init_ob_space, dfd_info_ob_space, dfd_add_ob_space)
@@ -75,8 +75,11 @@ class DeceiveEnv(BaseEnv):
         atk_init_ob = self._get_atk_init_ob()
         dfd_init_ob = self._get_dfd_init_ob()
 
-        atk_add_ob = np.concatenate([one_hot(self.n_targets, self.goal), obs_n[0], one_hot(self.steps_per_round, step)])
-        dfd_add_ob = np.concatenate([obs_n[1], one_hot(self.steps_per_round, step)])
+        # atk_add_ob = np.concatenate([one_hot(self.n_targets, self.goal), obs_n[0], one_hot(self.steps_per_round, step)])
+        # dfd_add_ob = np.concatenate([obs_n[1], one_hot(self.steps_per_round, step)])
+
+        atk_add_ob = np.concatenate([one_hot(self.n_targets, self.goal), obs_n[0], [step / self.steps_per_round]])
+        dfd_add_ob = np.concatenate([obs_n[1], [step / self.steps_per_round]])
 
         atk_info_ob = dfd_info_ob = self._get_info_ob(history)
 
@@ -122,6 +125,22 @@ class DeceiveEnv(BaseEnv):
 
         sub_done = False
         if self.steps_so_far == self.steps_per_round:
+            # for i, landmark in enumerate(self.world.landmarks):
+            #     if self.scenario.is_touching(self.world.agents[0], landmark):
+            #         if self.scenario.is_touching(self.world.agents[1], landmark):
+            #             reward_n[1] += 20
+            #             reward_n[0] -= 5
+            #         elif i == self.goal:
+            #             reward_n[0] += 20
+            #         else:
+            #             reward_n[0] += 5
+
+            if self.scenario.is_touching(self.world.agents[0], self.world.landmarks[self.goal]):
+                reward_n[0] += 20
+
+            if self.scenario.is_touching(self.world.agents[1], self.world.landmarks[self.goal]):
+                reward_n[1] += 20
+
             obs_n = self.env.reset()
             self.steps_so_far = 0
             self.round += 1
@@ -167,8 +186,8 @@ class DeceiveEnv(BaseEnv):
             at, dt = touching
 
             for i in range(self.n_targets):
-                atk_touching[steps][i] += at[i]
-                dfd_touching[steps][i] += dt[i]
+                atk_touching[steps][i] = atk_touching[steps][i] or at[i]
+                dfd_touching[steps][i] = dfd_touching[steps][i] or dt[i]
 
             if sub_done[0]:
                 steps += 1
@@ -191,7 +210,7 @@ class DeceiveEnv(BaseEnv):
 
         if verbose:
             print("Simulation ends.", [atk_rew, dfd_rew])
-            imageio.mimsave(save_dir, frames, duration=1 / 5)
+            imageio.mimsave(save_dir, frames, duration=1 / 3)
             for viewer in self.env.viewers:
                 viewer.close()
 
@@ -217,8 +236,8 @@ class DeceiveEnv(BaseEnv):
                     atk_right[i][j] += at[i][j]
                     dfd_right[i][j] += dt[i][j]
 
-        print("Attacker rights:", np.array(atk_right) / trials)
-        print("Defender rights:", np.array(dfd_right) / trials)
+        print("Attacker rights:", np.array(atk_right) / trials, [atk_right[i][0] / atk_right[i][1] for i in range(self.n_rounds)])
+        print("Defender rights:", np.array(dfd_right) / trials, [dfd_right[i][0] / dfd_right[i][1] for i in range(self.n_rounds)])
         print("Attacker same:", atk_same / trials)
         print("Defender same:", dfd_same / trials)
         print("Attacker reward:", atk_rew / trials)

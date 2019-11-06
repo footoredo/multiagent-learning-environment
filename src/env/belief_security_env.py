@@ -465,7 +465,8 @@ class BeliefSecurityEnv(BaseEnv):
 
         def display(ts, t='?'):
             for k, v in ts.items():
-                print(t, k, v)
+                if len(k) < 3:
+                    print(t, k, v)
 
         print("Attacker:")
         for t in range(self.n_types):
@@ -510,6 +511,7 @@ class BeliefSecurityEnv(BaseEnv):
         def_eps = atk_br[initial_state] - def_u[initial_state]
 
         print("BR:", [def_br[t][initial_state] for t in range(self.n_types)], atk_br[initial_state])
+        print("Payoff:", [atk_u[t][initial_state] for t in range(self.n_types)], def_u[initial_state])
 
         print("Overall:", atk_eps, def_eps)
 
@@ -617,11 +619,11 @@ class BeliefSecurityEnv(BaseEnv):
                         tmp = self._recursive(next_history, prob)
                         r = self._get_def_payoff(atk_ac, def_ac, prob) + tmp
                         ret += r * p
-                    print(history, def_ac, ret)
+                    # print(history, def_ac, ret)
                     if ret > max_ret:
                         max_ret = ret
                 self.cache[encoded] = max_ret
-                print(history, prior, max_ret)
+                # print(history, prior, max_ret)
                 return max_ret
 
         def run(self, attacker_strategy, prior):
