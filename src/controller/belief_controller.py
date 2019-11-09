@@ -9,6 +9,7 @@ import random
 import time
 import numpy as np
 import joblib
+import copy
 from common.path_utils import *
 
 
@@ -57,7 +58,7 @@ class BeliefController(BaseController):
             else:
                 raise NotImplementedError
 
-            return ReducedEnv(self.env,
+            return ReducedEnv(self.env if i == 1 else self.atk_env,
                               fixed_indices=[j for j in range(self.num_agents) if j != i],
                               fixed_policies=fixed_policies,
                               allow_single=True)
@@ -100,6 +101,7 @@ class BeliefController(BaseController):
         self.policy_pool_size = policy_pool_size
         # env = self.env if update_handler is None else MonitorEnv(self.env, update_handler)
         env = self.env
+        self.atk_env = self.env.get_atk_env()
         self.agents = [agent_fn(observation_space=env.get_observation_space(i),
                                 action_space=env.get_action_space(i),
                                 steps_per_round=env.n_rounds,
@@ -190,7 +192,10 @@ class BeliefController(BaseController):
         print("final avg:")
         avg_assessment = self.env.assess_strategies([self.avg_policy[i]
                                                      for i in range(self.num_agents)])
-
+        atk_vn, dfd_vn = self.env.calc_vn(self.avg_policy[0], self.avg_policy[1], 4096, 500)
+        for v in atk_vn:
+            v.save(save_path)
+        dfd_vn.save(save_path)
         # if test_every is not None:
         #     self.statistics.show_statistics()
 

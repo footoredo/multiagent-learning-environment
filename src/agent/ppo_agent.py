@@ -45,6 +45,7 @@ class PPOAgent(BaseAgent):
               max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
               callback=None,  # you can do anything in the callback, since it takes locals(), globals()
               adam_epsilon=1e-5,
+              beta1=0.9,
               schedule='constant',  # annealing for stepsize parameters (epsilon and adam)
               opponent='latest',  # opponent type
               exploration=None
@@ -104,7 +105,7 @@ class PPOAgent(BaseAgent):
 
         var_list = pi.get_trainable_variables()
         lossandgrad = U.function([ob, ac, atarg, prob, ret, lrmult], losses + [U.flatgrad(total_loss, var_list)])
-        adam = MpiAdam(var_list, epsilon=adam_epsilon, beta1=0.9)
+        adam = MpiAdam(var_list, epsilon=adam_epsilon, beta1=beta1)
         # adam =
 
         assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)
@@ -438,6 +439,9 @@ class PPOAgent(BaseAgent):
         return self._get_policy(self.curpi)
 
     def get_final_policy(self):
+        return self._get_policy(self.avgpi)
+
+    def get_average_policy(self):
         return self._get_policy(self.avgpi)
 
     def train(self, *args, **kwargs):

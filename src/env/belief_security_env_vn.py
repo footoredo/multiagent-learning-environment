@@ -10,6 +10,7 @@ import joblib
 import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
+from .value_network import ValueNetwork
 
 
 class GambitSolver:
@@ -113,7 +114,8 @@ class GambitSolver:
 
 
 class BeliefSecurityEnv(BaseEnv):
-    def __init__(self, n_slots, n_types, prior, n_rounds, value_low=5., value_high=10., zero_sum=False, seed=None, record_def=False, export_gambit=False, random_prior=False):
+    def __init__(self, n_slots, n_types, prior, n_rounds, value_low=5., value_high=10., zero_sum=False, seed=None,
+                 record_def=False, export_gambit=False, random_prior=False, vn_load_path=None, atk_env=False):
         self.n_slots = n_slots
         self.n_types = n_types
         self.prior = np.array(prior) if prior is not None else np.random.rand(n_types)
@@ -123,6 +125,10 @@ class BeliefSecurityEnv(BaseEnv):
         self.seed = seed
         self.record_def = record_def
         self.random_prior = random_prior
+        self.value_low = value_low
+        self.value_high = value_high
+        self.vn_load_path = vn_load_path
+        self.atk_env = atk_env
 
         # self.ob_shape = (n_rounds - 1, 2, n_slots + 1) if record_def else (n_rounds - 1, n_slots + 1)
         # self.ob_len = np.prod(self.ob_shape)
@@ -209,6 +215,21 @@ class BeliefSecurityEnv(BaseEnv):
 
         self.belief = None
 
+        self.atk_vn = None
+        self.dfd_vn = None
+
+        if vn_load_path is not None:
+            self.atk_vn = [ValueNetwork("atk%d" % i, n_types, 64, 2) for i in range(n_types)]
+            self.dfd_vn = ValueNetwork("dfd", n_types, 64, 2)
+            for i in range(n_types):
+                self.atk_vn[i].load(vn_load_path, "newatk%d" % i)
+            self.dfd_vn.load(vn_load_path, "newdfd")
+
+    def get_atk_env(self):
+        return BeliefSecurityEnv(self.n_slots, self.n_types, self.prior, self.n_rounds,
+                                 self.value_low, self.value_high, self.zero_sum, self.seed, self.record_def,
+                                 False, self.random_prior, self.vn_load_path, True)
+
     def generate_belief(self):
         x = [0.] + sorted(np.random.rand(self.n_types - 1).tolist()) + [1.]
         for i in range(self.n_types):
@@ -264,7 +285,6 @@ class BeliefSecurityEnv(BaseEnv):
         ob = np.zeros(self.n_rounds)
         if n < self.n_rounds:
             ob[n] = 1
-        # print(n)
         return ob
 
     def _get_atk_ob(self, t=None, belief=None, n=None):
@@ -339,6 +359,10 @@ class BeliefSecurityEnv(BaseEnv):
     # def update_policies(self, policies):
     #     self.policies = policies
 
+    def set_vn(self, atk_vn, dfd_vn):
+        self.atk_vn = atk_vn
+        self.dfd_vn = dfd_vn
+
     def reset(self, debug=False):
         # print(super().policies)
         # print(self.policies)
@@ -362,7 +386,10 @@ class BeliefSecurityEnv(BaseEnv):
         if self.random_prior:
             self.generate_belief()
 
-        self.atk_type = np.random.choice(self.n_types, p=self.prior)
+        if not self.atk_env:
+            self.atk_type = np.random.choice(self.n_types, p=self.prior)
+        else:
+            self.atk_type = np.random.choice(self.n_types)
         self.type_ob = np.zeros(shape=self.n_types, dtype=np.float32)
         self.type_ob[self.atk_type] = 1.
         self.belief = np.copy(self.prior)
@@ -388,6 +415,11 @@ class BeliefSecurityEnv(BaseEnv):
 
         atk_rew = self.payoff[self.atk_type, actions[0], actions[1], 0]
         dfd_rew = self.payoff[self.atk_type, actions[0], actions[1], 1]
+
+        if self.atk_vn is not None and self.dfd_vn is not None:
+            atk_rew += self.atk_vn[self.atk_type].calc(self.belief)
+            dfd_rew += self.dfd_vn.calc(self.belief)
+            self.rounds_so_far = self.n_rounds - 1
 
         if self.rounds_so_far < self.n_rounds - 1:
             if self.record_def:
@@ -426,10 +458,14 @@ class BeliefSecurityEnv(BaseEnv):
         return list(map(int, encoded_history.split(',')))
 
     def _convert_attacker_strategy(self, attacker_strategy, defender_strategy):
+        profile = [[] for _ in range(self.n_types)]
+
         def convert(t, belief, history):
             s = dict()
             if len(history) < self.n_rounds:
-                s[self.encode_history(history)] = attacker_strategy.strategy(self._get_atk_ob(t, belief, len(history)))
+                tmp = attacker_strategy.strategy(self._get_atk_ob(t, belief, len(history)))
+                s[self.encode_history(history)] = tmp
+                profile[t].append((str(history), tmp[0]))
                 for a in range(self.n_slots):
                     prob = [attacker_strategy.prob(self._get_atk_ob(xt, belief, len(history)), a)
                             for xt in range(self.n_types)]
@@ -439,14 +475,23 @@ class BeliefSecurityEnv(BaseEnv):
         strategy = []
         for at in range(self.n_types):
             strategy.append(convert(at, self.prior, []))
+            profile[at] = sorted(profile[at], key=lambda x: (len(x[0]), x[0]))
+            p = []
+            for entry in profile[at]:
+                p.append(entry[1])
+            print(at, p)
         return strategy
 
     def _convert_defender_strategy(self, attacker_strategy, defender_strategy):
+        profile = []
+
         def convert(belief, history):
             s = dict()
             if len(history) < self.n_rounds:
                 # print(belief, history)
-                s[self.encode_history(history)] = defender_strategy.strategy(self._get_dfd_ob(belief, len(history)))
+                tmp = defender_strategy.strategy(self._get_dfd_ob(belief, len(history)))
+                s[self.encode_history(history)] = tmp
+                profile.append((str(history), tmp[0]))
                 for a in range(self.n_slots):
                     prob = [attacker_strategy.prob(self._get_atk_ob(xt, belief, len(history)), a)
                             for xt in range(self.n_types)]
@@ -456,7 +501,51 @@ class BeliefSecurityEnv(BaseEnv):
 
         strategy = dict()
         strategy.update(convert(self.prior, []))
+
+        profile = sorted(profile, key=lambda x: (len(x[0]), x[0]))
+        p = []
+        for entry in profile:
+            p.append(entry[1])
+        print(p)
         return strategy
+
+    def calc_vn(self, attacker_strategy, defender_strategy, batch_size, train_steps):
+        atk_vn = [ValueNetwork("newatk%d" % i, self.n_types, 64, 2) for i in range(self.n_types)]
+        dfd_vn = ValueNetwork("newdfd", self.n_types, 64, 2)
+
+        for i in range(train_steps):
+            inputs = np.zeros(shape=(batch_size, self.n_types))
+            atk_values = [np.zeros(shape=batch_size) for _ in range(self.n_types)]
+            dfd_values = np.zeros(shape=batch_size)
+            for j in range(batch_size):
+                self.generate_belief()
+                inputs[j] = prior = np.copy(self.prior)
+                atk_action = [attacker_strategy.act(self._get_atk_ob(t, prior, 0)) for t in range(self.n_types)]
+                dfd_action = defender_strategy.act(self._get_dfd_ob(prior, 0))
+                atk_value = [self.get_atk_payoff(t, atk_action[t], dfd_action) for t in range(self.n_types)]
+                atk_true_action = np.random.choice(atk_action, 1, p=prior)
+                dfd_value = self.get_def_payoff(atk_true_action, dfd_action, None)
+                if self.atk_vn is not None and self.dfd_vn is not None:
+                    for t in range(self.n_types):
+                        atk_value[t] += self.atk_vn[t].calc(self.prior)
+                    dfd_value += self.dfd_vn.calc(self.prior)
+                    self.rounds_so_far = self.n_rounds - 1
+                for t in range(self.n_types):
+                    atk_values[t][j] = atk_value[t]
+                dfd_values[j] = dfd_value
+            for t in range(self.n_types):
+                atk_vn[t].loss_step(inputs, atk_values[t])
+            dfd_vn.loss_step(inputs, dfd_values)
+
+            if (i + 1) % (train_steps // 10) == 0:
+                for p in range(11):
+                    prior = np.array([p / 10, 1 - p / 10])
+                    print("Prior:", prior)
+                    print("  Attacker:", [atk_vn[t].calc(prior) for t in range(self.n_types)])
+                    print("  Defender:", dfd_vn.calc(prior))
+                print("-----")
+
+        return atk_vn, dfd_vn
 
     def _assess_strategies(self, strategies):
         print("prior:", self.prior)
@@ -520,7 +609,7 @@ class BeliefSecurityEnv(BaseEnv):
         print("Overall:", atk_eps, def_eps)
 
     def assess_strategies(self, strategies, verbose=False):
-        if self.random_prior:
+        if self.random_prior and self.n_types == 2:
             for x in range(11):
                 self.prior = np.array([x / 10., (10 - x) / 10.])
                 self._assess_strategies(strategies)

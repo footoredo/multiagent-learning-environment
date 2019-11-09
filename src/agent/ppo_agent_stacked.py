@@ -95,6 +95,7 @@ class PPOAgentStacked(BaseAgent):
               gamma, lam,  # advantage estimation
               n_rounds,
               max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
+              steps_per_round=1,
               callback=None,  # you can do anything in the callback, since it takes locals(), globals()
               adam_epsilon=1e-5,
               schedule='constant',  # annealing for stepsize parameters (epsilon and adam)
@@ -125,6 +126,7 @@ class PPOAgentStacked(BaseAgent):
         self.push, self.pull = handlers
         self.exploration = exploration
         self.n_rounds = n_rounds
+        self.steps_per_round = steps_per_round
         # sub_ob_space = ob_space
         pi = policy_fn("pi", self.name, ob_space, ac_space)  # Construct network for new policy
         oldpi = policy_fn("oldpi", self.name, ob_space, ac_space)  # Network for old policy
@@ -272,8 +274,8 @@ class PPOAgentStacked(BaseAgent):
                 # logger.log(seg["rew"])
                 ob, ac, atarg, tdlamret, prob = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"], seg["prob"]
 
-                for i in range(len(ob)):
-                    self.replay_buffer.add((ob[i], ac[i], atarg[i], tdlamret[i], prob[i]))
+                # for i in range(len(ob)):
+                #     self.replay_buffer.add((ob[i], ac[i], atarg[i], tdlamret[i], prob[i]))
 
                 # print(ob, ac, seg["rew"], seg["vpred"])
                 # print(prob)
@@ -435,6 +437,7 @@ class PPOAgentStacked(BaseAgent):
         return ob[:-self.n_rounds]
 
     def get_round(self, round_ob):
+        # print(round_ob)
         for i in range(round_ob.shape[0]):
             if round_ob[i] > 0.5:
                 return i
@@ -504,17 +507,19 @@ class PPOAgentStacked(BaseAgent):
 
             rew = 0.0
 
-            for j in range(self.n_rounds - 1):
-                ob, sub_rew, _, new, prob, history = env.step(ac, my_prob)
-                rew += sub_rew
-                ob = self.trim_ob(ob)
-                ac, _ = self.subpis[j].act(stochastic, ob)
-                my_prob = 0.0
+            # for j in range(self.n_rounds - 1):
+            #     ob, sub_rew, _, new, prob, history = env.step(ac, my_prob)
+            #     rew += sub_rew
+            #     ob = self.trim_ob(ob)
+            #     ac, _ = self.subpis[j].act(stochastic, ob)
+            #     my_prob = 0.0
 
             _, sub_rew, _, new, _, _ = env.step(ac, my_prob)
 
             rew += sub_rew
             rews[i] = rew
+
+            # print(ac, rew)
 
             # print("1", ob, prob)
             # print(new)
@@ -557,7 +562,7 @@ class PPOAgentStacked(BaseAgent):
             gaelam[t] = lastgaelam = delta[t] + gamma * lam * nonterminal * lastgaelam
         # print(seg["adv"])
         seg["tdlamret"] = seg["adv"] + seg["vpred"]
-        # print("adv", seg["adv"])
+        # print("adv", seg["tdlamret"])
         # print("vpred", seg["vpred"])
         # print("seg", seg)
 
@@ -596,7 +601,12 @@ class PPOAgentStacked(BaseAgent):
             # print(ob, round)
             return truepi.strategy(ob)
 
-        return Policy(act_fn, prob_fn, strategy_fn)
+        def vpred_fn(ob):
+            ob, round = ob[:-self.n_rounds], self.get_round(ob[-self.n_rounds:])
+            truepi = pi if round == 0 else self.subpis[round - 1]
+            return truepi.vp(ob)
+
+        return Policy(act_fn=act_fn, prob_fn=prob_fn, strategy_fn=strategy_fn, vpred_fn=vpred_fn)
 
     def get_initial_policy(self):
         return self._get_policy()

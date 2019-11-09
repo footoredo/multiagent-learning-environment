@@ -418,7 +418,7 @@ class SecurityEnv(BaseEnv):
 
     def show_attacker_strategy(self, strategy):
         def show(t, history):
-            if len(history) < self.n_rounds:
+            if len(history) < min(2, self.n_rounds):
                 ob = self.convert_to_atk_ob(history, t)
                 s = strategy(ob)
                 print("{}:{} {}".format(t, ','.join(map(str, history)), s))
@@ -430,7 +430,7 @@ class SecurityEnv(BaseEnv):
 
     def show_defender_strategy(self, strategy):
         def show(history):
-            if len(history) < self.n_rounds:
+            if len(history) < min(2, self.n_rounds):
                 ob = self.convert_to_def_ob(history)
                 s = strategy(ob)
                 print("{}:{} {}".format('?', ','.join(map(str, history)), s))

@@ -16,7 +16,8 @@ class RecurrentPolicy(object):
             self._init(*args, **kwargs)
             self.scope = tf.get_variable_scope().name
 
-    def _init(self, agent_name, init_ob_space, info_ob_space, add_ob_space, ac_space, tp_space, hid_size, num_hid_layers, gaussian_fixed_var=True):
+    def _init(self, agent_name, init_ob_space, info_ob_space, add_ob_space, ac_space, tp_space, hid_size,
+              num_hid_layers, gaussian_fixed_var=True, myopic=False):
         def adjust_shape(ph, data):
             return data
         U.adjust_shape = adjust_shape
@@ -67,8 +68,10 @@ class RecurrentPolicy(object):
 
         self.tp = tppdtype.pdfromflat(tpparam)
 
-        # obz = tf.concat([last_out, d], axis=-1)
-        obz = d
+        if not myopic:
+            obz = tf.concat([last_out, d], axis=-1)
+        else:
+            obz = d
 
         with tf.variable_scope('vf'):
             # obz = tf.clip_by_value((ob - self.ob_rms.mean) / self.ob_rms.std, -5.0, 5.0)

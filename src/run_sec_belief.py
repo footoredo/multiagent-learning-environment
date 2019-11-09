@@ -1,5 +1,5 @@
 from env.matrix_env import MatrixEnv
-from env.belief_security_env import BeliefSecurityEnv
+from env.belief_security_env_vn import BeliefSecurityEnv
 from controller.belief_controller import BeliefController
 from agent.dummy_agent import DummyAgent
 from agent.infant_agent import InfantAgent
@@ -65,6 +65,7 @@ def parse_args():
     parser.add_argument('--iterations-per-round', type=int, default=16)
     parser.add_argument('--exp-name', type=str)
     parser.add_argument('--sub-load-path', type=str)
+    parser.add_argument('--vn-load-path', type=str)
 
     return parser.parse_args()
 
@@ -217,7 +218,8 @@ if __name__ == "__main__":
     for p in [.5]:
         for _ in range(1):
             env = BeliefSecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum,
-                              seed=seed, export_gambit=n_rounds <= 5 and n_slots <= 2, random_prior=args.random_prior)
+                                    seed=seed, export_gambit=n_rounds <= 5 and n_slots <= 2,
+                                    random_prior=args.random_prior, vn_load_path=args.vn_load_path)
             # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
             if train:
                 # test_every = 1

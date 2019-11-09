@@ -53,7 +53,10 @@ def parse_args():
     parser.add_argument('--save-every', type=int)
     parser.add_argument('--reset-every', type=int)
     parser.add_argument('--load', action="store_true")
+    parser.add_argument('--attacker-myopic', action="store_true")
+    parser.add_argument('--defender-myopic', action="store_true")
     parser.add_argument('--load-step', type=int)
+    parser.add_argument('--load-dir', type=str)
     parser.add_argument('--max-steps', type=int, default=10000)
     parser.add_argument('--network-width', type=int, default=256)
     parser.add_argument('--network-depth', type=int, default=4)
@@ -61,7 +64,7 @@ def parse_args():
     parser.add_argument('--timesteps-per-batch', type=int, default=8)
     parser.add_argument('--iterations-per-round', type=int, default=16)
     parser.add_argument('--exp-name', type=str)
-    parser.add_argument('--other', type=str)
+    parser.add_argument('--other', type=str, default='')
 
     return parser.parse_args()
 
@@ -108,7 +111,7 @@ exp_name = "_".join(["security",
 exp_dir = os.path.join(result_folder, exp_name)
 
 
-def get_make_ppo_agent(reset_every, timesteps_per_actorbatch, max_iterations, n_rounds):
+def get_make_ppo_agent(reset_every, timesteps_per_actorbatch, max_iterations, n_rounds, myopic):
     def make_ppo_agent(observation_space, action_space, type_space, handlers):
         def policy(name, agent_name, init_ob_space, info_ob_space, add_ob_space, ac_space, tp_space):
             # init_ob_space, info_ob_space = ob_space
@@ -117,7 +120,8 @@ def get_make_ppo_agent(reset_every, timesteps_per_actorbatch, max_iterations, n_
             return RecurrentPolicy(name=name, agent_name=agent_name, init_ob_space=init_ob_space,
                                    info_ob_space=info_ob_space, add_ob_space=add_ob_space, ac_space=ac_space,
                                    tp_space=tp_space,
-                                   hid_size=network_width, num_hid_layers=network_depth)
+                                   hid_size=network_width, num_hid_layers=network_depth,
+                                   myopic=myopic)
 
         global ppo_agent_cnt
         init_ob_space, info_ob_space, add_ob_space = observation_space
@@ -128,7 +132,7 @@ def get_make_ppo_agent(reset_every, timesteps_per_actorbatch, max_iterations, n_
                          timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0,
                          optim_epochs=1, optim_stepsize=learning_rate, beta1=0.5,
                          gamma=0.99, lam=0.95, reset_every=reset_every, max_iters=max_iterations,
-                         schedule=schedule, opponent=opponent)
+                         schedule=schedule, opponent=opponent, myopic=myopic)
         ppo_agent_cnt += 1
         return agent
     return make_ppo_agent
@@ -182,8 +186,7 @@ if __name__ == "__main__":
 
     result_folder = "../result/"
     plot_folder = "../plots/"
-    exp_name = args.exp_name or \
-        "_".join(["security" + args.other,
+    x = ["security" + args.other,
                   "recurrent",
                   agent,
                   "seed:{}".format(seed),
@@ -198,7 +201,13 @@ if __name__ == "__main__":
                   "test_steps:{}".format(test_steps),
                   "reset_every:{}".format(reset_every),
                   "network:{}-{}".format(network_width, network_depth),
-                  "train:{}*{}".format(timesteps_per_batch, iterations_per_round)])
+                  "train:{}*{}".format(timesteps_per_batch, iterations_per_round)]
+    if args.attacker_myopic:
+        x.append("att-myopic")
+    if args.defender_myopic:
+        x.append("dfd-myopic")
+    exp_name = args.exp_name or \
+        "_".join(x)
     # exp_name = "security_seed:5410_2-2-2_gs_no-reset_5e-6_wolf_adv:20.0_1:1_latest_10"
     exp_dir = os.path.join(result_folder, exp_name)
     plot_dir = os.path.join(plot_folder, exp_name)
@@ -242,16 +251,20 @@ if __name__ == "__main__":
             if train:
                 # test_every = 1
                 if agent == "ppo":
-                    agents = [get_make_ppo_agent(reset_every, timesteps_per_batch, iterations_per_round, n_rounds=args.n_rounds),
-                              get_make_ppo_agent(reset_every, timesteps_per_batch, iterations_per_round, n_rounds=args.n_rounds)]
+                    agents = [get_make_ppo_agent(reset_every, timesteps_per_batch, iterations_per_round, args.n_rounds, args.attacker_myopic),
+                              get_make_ppo_agent(reset_every, timesteps_per_batch, iterations_per_round, args.n_rounds, args.defender_myopic)]
                 else:
                     raise NotImplementedError
                 controller = NaiveController(env, agents)
+                if args.load_dir is not None:
+                    load_dir = os.path.join(result_folder, args.load_dir)
+                else:
+                    load_dir = exp_dir
                 train_result, local_results, train_info = \
                     controller.train(max_steps=max_steps, policy_store_every=None,
                                      test_every=test_every,  test_max_steps=test_steps,
                                      record_assessment=True, train_steps=train_steps, reset=reset,
-                                     load_state=load, load_path=join_path(exp_dir, "step-{}".format(load_step)),
+                                     load_state=load, load_path=join_path(load_dir, "step-{}".format(load_step)),
                                      save_every=save_every, save_path=exp_dir, store_results=False)
                 env.export_settings(join_path_and_check(exp_dir, "env_settings.obj"))
                 assessments = train_result["assessments"]

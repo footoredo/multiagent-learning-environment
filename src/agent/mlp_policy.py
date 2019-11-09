@@ -35,6 +35,7 @@ class MLPPolicy(object):
             for i in range(num_hid_layers):
                 last_out = tf.nn.tanh(tf.layers.dense(last_out, hid_size, name="fc%i"%(i+1), kernel_initializer=U.normc_initializer(1.0)))
             self.vpred = tf.layers.dense(last_out, 1, name='final', kernel_initializer=U.normc_initializer(1.0))[:,0]
+            self._vp = U.function([ob], self.vpred)
 
         with tf.variable_scope('pol'):
             last_out = obz
@@ -74,6 +75,9 @@ class MLPPolicy(object):
         # print(ob)
         prob1 = self._prob(ob[None])
         return prob1[0][ac]
+
+    def vp(self, ob):
+        return self._vp(ob[None])[0]
 
     def strategy(self, ob):
         # print(ob, ob[None], self._prob(ob[None])[0])

@@ -404,31 +404,47 @@ class SecurityEnv(BaseEnv):
         return list(reversed(history))
 
     def show_attacker_strategy(self, strategy):
+        profile = [[] for _ in range(self.n_types)]
         def show(t, history):
             if len(history) < self.n_rounds:
                 init_ob = self.convert_to_init_ob(self.prior)
                 info_ob = self.convert_to_info_ob(history)
                 add_ob = self.convert_to_atk_add_ob(t, len(history))
                 s = strategy((init_ob, info_ob, add_ob))
-                print("{}:{} {}".format(t, ','.join(map(str, history)), s))
+                if len(history) < 2:
+                    print("{}:{} {}".format(t, ','.join(map(str, history)), s))
+                profile[t].append((str(history), s[0]))
                 for a in range(self.n_slots):
                     show(t, history + [a])
 
         for t in range(self.n_types):
             show(t, [])
+            profile[t] = sorted(profile[t], key=lambda x: (len(x[0]), x[0]))
+            p = []
+            for entry in profile[t]:
+                p.append(entry[1])
+            print(t, p)
 
     def show_defender_strategy(self, strategy):
+        profile = []
         def show(history):
             if len(history) < self.n_rounds:
                 init_ob = self.convert_to_init_ob(self.prior)
                 info_ob = self.convert_to_info_ob(history)
                 add_ob = self.convert_to_dfd_add_ob(len(history))
                 s = strategy((init_ob, info_ob, add_ob))
-                print("{}:{} {}".format('?', ','.join(map(str, history)), s))
+                if len(history) < 2:
+                    print("{}:{} {}".format('?', ','.join(map(str, history)), s))
+                profile.append((str(history), s[0]))
                 for a in range(self.n_slots):
                     show(history + [a])
 
         show([])
+        profile = sorted(profile, key=lambda x: (len(x[0]), x[0]))
+        p = []
+        for entry in profile:
+            p.append(entry[1])
+        print(p)
 
     def assess_strategies(self, strategies, verbose=False):
         attacker_strategy, defender_strategy = strategies

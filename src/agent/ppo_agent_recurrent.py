@@ -44,6 +44,7 @@ class PPOAgent(BaseAgent):
     def load(self, load_path):
         config = json.load(open(join_path_and_check(load_path, "config.json"), "r"))
         self.cnt = config["cnt"]
+        print("cnt", self.cnt)
         U.load_variables(join_path(load_path, "current_model.obj"),
                          variables=self.pi.get_trainable_variables())
         U.load_variables(join_path(load_path, "average_model.obj"),
@@ -65,7 +66,8 @@ class PPOAgent(BaseAgent):
               adam_epsilon=1e-5,
               schedule='constant',  # annealing for stepsize parameters (epsilon and adam)
               opponent='latest',  # opponent type
-              exploration=None
+              exploration=None,
+              myopic=False,
               ):
         self.config = {
             "timesteps_per_actorbatch": timesteps_per_actorbatch,
@@ -84,6 +86,8 @@ class PPOAgent(BaseAgent):
             "opponent": opponent
         }
         # print(ob_space)
+        # if myopic:
+        #     gamma = 0.
         self.schedule = schedule
         self.policy_fn = policy_fn
         # self.ob_space = ob_space
