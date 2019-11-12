@@ -5,7 +5,7 @@ from agent.dummy_agent import DummyAgent
 from agent.infant_agent import InfantAgent
 from agent.self_play_agent import SelfPlayAgent
 from agent.ppo_agent_backup import PPOAgent
-from agent.ppo_agent_stacked import PPOAgentStacked
+from agent.ppo_agent_stacked_v3 import PPOAgentStacked
 from agent.pac_agent import PACAgent
 from agent.mlp_policy import MLPPolicy
 import seaborn as sns
@@ -232,7 +232,7 @@ if __name__ == "__main__":
                 else:
                     raise NotImplementedError
                 controller = BeliefController(env, agents)
-                train_result, local_results, train_info = \
+                train_result, local_results, global_results, train_info = \
                     controller.train(max_steps=max_steps, policy_store_every=None,
                                      test_every=test_every,  test_max_steps=test_steps,
                                      record_assessment=True, reset=reset,
@@ -242,32 +242,72 @@ if __name__ == "__main__":
                 env.export_settings(join_path_and_check(exp_dir, "env_settings.obj"))
                 assessments = train_result["assessments"]
                 current_assessments = train_result["current_assessments"]
-                joblib.dump(train_result["final_assessment"], join_path_and_check(exp_dir, "final_assessment.obj"))
+                # joblib.dump(train_result["final_assessment"], join_path_and_check(exp_dir, "final_assessment.obj"))
                 joblib.dump(local_results, join_path_and_check(exp_dir, "local_results.obj"))
                 joblib.dump(train_info, join_path_and_check(exp_dir, "train_info.obj"))
                 # joblib.dump(train_result["local_"], join_path_and_check(exp_dir, "final_assessment.obj"))
                 print(assessments)
-                print(train_result["random_assessment"])
+                # print(train_result["random_assessment"])
                 for i in range(test_every, max_steps + 1, test_every):
-                    res["episode"].append(i)
-                    res["assessment"].append(assessments[i // test_every - 1][0][0])
-                    res["current_assessments"].append(current_assessments[i // test_every - 1][0][0])
-                    res["player"].append("attacker")
+                    for t in range(args.n_types):
+                        res["episode"].append(i)
+                        res["assessment"].append(assessments[i // test_every - 1][0][0][t])
+                        res["current_assessments"].append(current_assessments[i // test_every - 1][0][0][t])
+                        res["player"].append("attacker-{}".format(t))
 
                     res["episode"].append(i)
                     res["assessment"].append(assessments[i // test_every - 1][1][0])
                     res["current_assessments"].append(current_assessments[i // test_every - 1][1][0])
                     res["player"].append("defender")
 
-                    res["episode"].append(i)
-                    res["assessment"].append(assessments[i // test_every - 1][0][1])
-                    res["current_assessments"].append(current_assessments[i // test_every - 1][0][1])
-                    res["player"].append("attacker PBNE")
+                    for t in range(args.n_types):
+                        res["episode"].append(i)
+                        res["assessment"].append(assessments[i // test_every - 1][0][1][t])
+                        res["current_assessments"].append(current_assessments[i // test_every - 1][0][1][t])
+                        res["player"].append("attacker-{} PBNE".format(t))
 
                     res["episode"].append(i)
                     res["assessment"].append(assessments[i // test_every - 1][1][1])
                     res["current_assessments"].append(current_assessments[i // test_every - 1][1][1])
                     res["player"].append("defender PBNE")
+                    
+                res2 = {
+                    "episode": [],
+                    "prob": [],
+                    "current_prob": [],
+                    "player": []
+                }
+                
+                for i in range(test_every, max_steps + 1, test_every):
+                    for t in range(args.n_types):
+                        res2["episode"].append(i)
+                        res2["prob"].append(local_results[i // test_every - 1][0][t][0])
+                        res2["current_prob"].append(global_results[i // test_every - 1][0][t][0])
+                        res2["player"].append("attacker-{}".format(t))
+
+                    res2["episode"].append(i)
+                    res2["prob"].append(local_results[i // test_every - 1][1][0])
+                    res2["current_prob"].append(global_results[i // test_every - 1][1][0])
+                    res2["player"].append("defender")
+
+                print(exp_name)
+
+                joblib.dump(res, join_path_and_check(exp_dir, "result.obj"))
+                df = pd.DataFrame(data=res)
+                sns.set()
+                sns.lineplot(x="episode", y="assessment", hue="player", data=df)
+                plt.savefig(join_path_and_check(plot_dir, "result.png"), dpi=600)
+                plt.show()
+                sns.lineplot(x="episode", y="current_assessments", hue="player", data=df)
+                plt.savefig(join_path_and_check(plot_dir, "current_result.png"), dpi=600)
+                plt.show()
+                df2 = pd.DataFrame(data=res2)
+                sns.lineplot(x="episode", y="prob", hue="player", data=df2)
+                plt.savefig(join_path_and_check(plot_dir, "prob.png"), dpi=600)
+                plt.show()
+                sns.lineplot(x="episode", y="current_prob", hue="player", data=df2)
+                plt.savefig(join_path_and_check(plot_dir, "current_prob.png"), dpi=600)
+                plt.show()
             else:
                 pass
                 # lie_p = env.get_lie_prob()
@@ -278,15 +318,6 @@ if __name__ == "__main__":
         # res["p"].append(p)
         # res["lie_p"].append(s / T)
 
-    print(exp_name)
-    joblib.dump(res, join_path_and_check(exp_dir, "result.obj"))
-    df = pd.DataFrame(data=res)
-    sns.set()
-    sns.lineplot(x="episode", y="assessment", hue="player", data=df)
-    plt.savefig(join_path_and_check(plot_dir, "result.png"), dpi=800)
-    plt.show()
-    sns.lineplot(x="episode", y="current_assessments", hue="player", data=df)
-    plt.savefig(join_path_and_check(plot_dir, "current_result.png"), dpi=800)
-    plt.show()
+
 else:
     print("fuck")

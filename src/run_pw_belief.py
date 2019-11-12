@@ -4,7 +4,7 @@ from controller.belief_controller_pw import NaiveController
 from agent.dummy_agent import DummyAgent
 from agent.infant_agent import InfantAgent
 from agent.self_play_agent import SelfPlayAgent
-from agent.ppo_agent import PPOAgent
+from agent.ppo_agent_stacked import PPOAgentStacked
 from agent.pac_agent import PACAgent
 from agent.mlp_policy import MLPPolicy
 # from agent.recurrent_policy import RecurrentPolicy
@@ -53,6 +53,7 @@ def parse_args():
     parser.add_argument('--max-steps', type=int, default=10000)
     parser.add_argument('--network-width', type=int, default=256)
     parser.add_argument('--network-depth', type=int, default=4)
+    parser.add_argument('--sub-load-path', type=str)
     parser.add_argument('--timesteps-per-batch', type=int, default=8)
     parser.add_argument('--iterations-per-round', type=int, default=16)
     parser.add_argument('--exp-name', type=str)
@@ -61,7 +62,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_make_ppo_agent(timesteps_per_actorbatch, max_iterations):
+def get_make_ppo_agent(timesteps_per_actorbatch, max_iterations, n_rounds, steps_per_round):
     def make_ppo_agent(observation_space, action_space, handlers):
         def policy(name, agent_name, ob_space, ac_space):
             # init_ob_space, info_ob_space = ob_space
@@ -71,13 +72,14 @@ def get_make_ppo_agent(timesteps_per_actorbatch, max_iterations):
                              hid_size=network_width, num_hid_layers=network_depth)
 
         global ppo_agent_cnt
-        agent = PPOAgent(name="ppo_agent_%d" % ppo_agent_cnt, policy_fn=policy,
-                         ob_space=observation_space,
-                         ac_space=action_space, handlers=handlers,
-                         timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0,
-                         optim_epochs=1, optim_stepsize=learning_rate, beta1=0.9,
-                         gamma=0.99, lam=0.95, max_iters=max_iterations,
-                         schedule="constant", opponent="latest")
+        agent = PPOAgentStacked(name="ppo_agent_%d" % ppo_agent_cnt, policy_fn=policy,
+                                ob_space=observation_space,
+                                ac_space=action_space, handlers=handlers,
+                                n_rounds=n_rounds, steps_per_round=steps_per_round,
+                                timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0.01,
+                                optim_epochs=1, optim_stepsize=learning_rate, beta1=0.9,
+                                gamma=0.99, lam=0.95, max_iters=max_iterations,
+                                schedule="constant", opponent="latest")
         ppo_agent_cnt += 1
         return agent
     return make_ppo_agent
@@ -169,8 +171,8 @@ if __name__ == "__main__":
             if train:
                 # test_every = 1
                 if agent == "ppo":
-                    agents = [get_make_ppo_agent(timesteps_per_batch, iterations_per_round),
-                              get_make_ppo_agent(timesteps_per_batch, iterations_per_round)]
+                    agents = [get_make_ppo_agent(timesteps_per_batch, iterations_per_round, args.n_rounds, args.steps_per_round),
+                              get_make_ppo_agent(timesteps_per_batch, iterations_per_round, args.n_rounds, args.steps_per_round)]
                 else:
                     raise NotImplementedError
                 controller = NaiveController(env, agents)
@@ -178,6 +180,7 @@ if __name__ == "__main__":
                     controller.train(max_steps=max_steps, policy_store_every=None,
                                      test_every=test_every,  test_max_steps=0,
                                      record_assessment=True, reset=False,
+                                     sub_load_path=args.sub_load_path,
                                      load_state=load, load_path=join_path(exp_dir, "step-{}".format(load_step)),
                                      save_every=save_every, save_path=exp_dir, store_results=False)
                 assessments = train_result["assessments"]

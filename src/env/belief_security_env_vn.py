@@ -11,7 +11,17 @@ import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
 from .value_network import ValueNetwork
+from pack import Pack
+import os
 
+
+class PackedVN(Pack):
+    def calc(self, ob):
+        return self.get(ob)
+
+    @staticmethod
+    def from_file(filename):
+        return PackedVN(Pack.from_file(filename).key_points)
 
 class GambitSolver:
     def __init__(self, n_types, n_slots, n_stages, prior, payoff):
@@ -219,11 +229,13 @@ class BeliefSecurityEnv(BaseEnv):
         self.dfd_vn = None
 
         if vn_load_path is not None:
-            self.atk_vn = [ValueNetwork("atk%d" % i, n_types, 64, 2) for i in range(n_types)]
-            self.dfd_vn = ValueNetwork("dfd", n_types, 64, 2)
-            for i in range(n_types):
-                self.atk_vn[i].load(vn_load_path, "newatk%d" % i)
-            self.dfd_vn.load(vn_load_path, "newdfd")
+            # self.atk_vn = [ValueNetwork("atk%d" % i, n_types, 64, 2) for i in range(n_types)]
+            # self.dfd_vn = ValueNetwork("dfd", n_types, 64, 2)
+            # for i in range(n_types):
+            #     self.atk_vn[i].load(vn_load_path, "newatk%d" % i)
+            # self.dfd_vn.load(vn_load_path, "newdfd")
+            self.atk_vn = [PackedVN.from_file(os.path.join(vn_load_path, "atk%d-vn.obj" % i)) for i in range(n_types)]
+            self.dfd_vn = PackedVN.from_file(os.path.join(vn_load_path, "dfd-vn.obj"))
 
     def get_atk_env(self):
         return BeliefSecurityEnv(self.n_slots, self.n_types, self.prior, self.n_rounds,
@@ -608,13 +620,22 @@ class BeliefSecurityEnv(BaseEnv):
 
         print("Overall:", atk_eps, def_eps)
 
+        return (atk_eps, atk_pbne_eps), (def_eps, def_pbne_eps)
+
+    def get_strategy_profile(self, strategies):
+        atk_s, dfd_s = strategies
+        atk_p = [atk_s.strategy(self._get_atk_ob(t, self.prior, 0)) for t in range(self.n_types)]
+        dfd_p = dfd_s.strategy(self._get_dfd_ob(self.prior, 0))
+
+        return atk_p, dfd_p
+
     def assess_strategies(self, strategies, verbose=False):
         if self.random_prior and self.n_types == 2:
             for x in range(11):
                 self.prior = np.array([x / 10., (10 - x) / 10.])
                 self._assess_strategies(strategies)
         else:
-            self._assess_strategies(strategies)
+            return self._assess_strategies(strategies)
 
         if verbose:
             raise NotImplementedError

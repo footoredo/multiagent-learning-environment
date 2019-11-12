@@ -124,8 +124,8 @@ class BeliefController(BaseController):
         if load_state:
             self.load(load_path)
 
-        for i, agent in enumerate(self.agents):
-            if sub_load_path is not None:
+        if sub_load_path is not None:
+            for i, agent in enumerate(self.agents):
                 agent.load_sub(join_path(sub_load_path, "agent-{}".format(i)))
 
         if store_results:
@@ -168,9 +168,15 @@ class BeliefController(BaseController):
                     #                                          for i in range(self.num_agents)])
                     current_assessment = self.env.assess_strategies([self.latest_policy[i]
                                                                      for i in range(self.num_agents)])
+
+                    atk_p, dfd_p = self.env.get_strategy_profile([self.latest_policy[i] for i in range(self.num_agents)])
+                    local_results.append((atk_p, dfd_p))
+
                     print("AVG:")
                     avg_assessment = self.env.assess_strategies([self.avg_policy[i]
                                                                      for i in range(self.num_agents)])
+                    atk_p, dfd_p = self.env.get_strategy_profile([self.avg_policy[i] for i in range(self.num_agents)])
+                    global_results.append((atk_p, dfd_p))
                     # assessment = self.env.assess_strategies([self.latest_policy[i].strategy_fn
                     #                                          for i in range(self.num_agents)])
                     # for i in range(self.num_agents):
@@ -192,10 +198,13 @@ class BeliefController(BaseController):
         print("final avg:")
         avg_assessment = self.env.assess_strategies([self.avg_policy[i]
                                                      for i in range(self.num_agents)])
-        atk_vn, dfd_vn = self.env.calc_vn(self.avg_policy[0], self.avg_policy[1], 4096, 500)
-        for v in atk_vn:
-            v.save(save_path)
-        dfd_vn.save(save_path)
+        print("final:")
+        assessment = self.env.assess_strategies([self.latest_policy[i]
+                                                     for i in range(self.num_agents)])
+        # atk_vn, dfd_vn = self.env.calc_vn(self.avg_policy[0], self.avg_policy[1], 4096, 500)
+        # for v in atk_vn:
+        #     v.save(save_path)
+        # dfd_vn.save(save_path)
         # if test_every is not None:
         #     self.statistics.show_statistics()
 
@@ -209,7 +218,7 @@ class BeliefController(BaseController):
         #     self.records["random_assessment"] = random_assessment
 
         # self.run_benchmark(10000)
-        return self.records, local_results, train_info
+        return self.records, local_results, global_results, train_info
 
     def test(self, *args, **kwargs):
         pass

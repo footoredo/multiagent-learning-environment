@@ -14,6 +14,7 @@ from mpi4py import MPI
 import json
 from common.path_utils import *
 from .replay_buffer import ReplayBuffer
+from pack import Pack
 
 
 def trim_name(name):
@@ -51,6 +52,27 @@ def load_variables(load_path, variables=None, sess=None):
     sess.run(restores)
 
 
+class PackedActor(Pack):
+    def __init__(self, key_points, n_slots):
+        super().__init__(key_points)
+        self.n_slots = n_slots
+
+    def strategy(self, ob):
+        return self.get(ob)
+
+    def act(self, stochastic, ob):
+        assert stochastic
+        s = self.strategy(ob)
+        return np.random.choice(self.n_slots, p=s), None
+
+    def prob(self, ob, ac):
+        s = self.strategy(ob)
+        return s[ac]
+
+    def get_policy(self):
+        return Policy(act_fn=self.act, prob_fn=self.prob, strategy_fn=self.strategy)
+
+
 class PPOAgentStacked(BaseAgent):
     def __init__(self, name, *args, **kwargs):
         self.name = name
@@ -70,8 +92,8 @@ class PPOAgentStacked(BaseAgent):
         json.dump(self.config, open(join_path_and_check(save_path, "config.json"), "w"))
         self._save(self.pi, "current", save_path)
         self._save(self.avgpi, self.n_rounds, save_path)
-        for i in range(self.n_rounds - 1):
-            self._save(self.subpis[i], self.n_rounds - i - 1, save_path)
+        # for i in range(self.n_rounds - 1):
+        #     self._save(self.subpis[i], self.n_rounds - i - 1, save_path)
 
     def _load(self, pi, name, save_path):
         load_variables(join_path(save_path, "model-{}.obj".format(name)), variables=pi.get_trainable_variables())
@@ -79,12 +101,17 @@ class PPOAgentStacked(BaseAgent):
     def load(self, load_path):
         self._load(self.pi, "current", load_path)
         self._load(self.avgpi, self.n_rounds, load_path)
-        self.load_sub(load_path)
-        self.assign_cur_eq_new()
+        # self.load_sub(load_path)
+
+    def _load_sub(self, i, load_path):
+        import joblib
+        key_points = joblib.load(join_path(load_path, "pack-{}.obj".format(i)))
+        pi = PackedActor(key_points, self.n_slots)
+        return pi
 
     def load_sub(self, load_path):
         for i in range(self.n_rounds - 1):
-            self._load(self.subpis[i], self.n_rounds - i - 1, load_path)
+            self.subpis[i] = self._load_sub(self.n_rounds - i - 1, load_path)
             print("Loaded subgame solver %d!" % i)
 
     def _init(self, policy_fn, ob_space, ac_space,
@@ -127,6 +154,7 @@ class PPOAgentStacked(BaseAgent):
         self.push, self.pull = handlers
         self.exploration = exploration
         self.n_rounds = n_rounds
+        self.n_slots = ac_space.n
         self.steps_per_round = steps_per_round
         # sub_ob_space = ob_space
         print(self.name, ob_space)
@@ -416,7 +444,7 @@ class PPOAgentStacked(BaseAgent):
 
                 update_avg(1. / self.cnt)
 
-            # if ep_i == 2000:
+            # if self.cnt > 100:
             #     assign_new_eq_avg()
             #     self.cnt = 1
 
@@ -521,13 +549,13 @@ class PPOAgentStacked(BaseAgent):
             ob = self.trim_ob(ob)
 
             if (t + 1) % self.steps_per_round == 0:
-                for j in range(self.n_rounds - 1):
-                    for k in range(self.steps_per_round):
-                        ac, _ = self.subpis[j].act(stochastic, ob)
-                        ob, sub_rew, _, new, prob, history = env.step(ac, my_prob)
-                        # print(j, k, new)
-                        rew += sub_rew
-                        ob = self.trim_ob(ob)
+                # for j in range(self.n_rounds - 1):
+                #     for k in range(self.steps_per_round):
+                #         ac, _ = self.subpis[j].act(stochastic, ob)
+                #         ob, sub_rew, _, new, prob, history = env.step(ac, my_prob)
+                #         # print(j, k, new)
+                #         rew += sub_rew
+                #         ob = self.trim_ob(ob)
                 assert new
 
             rews[i] = rew

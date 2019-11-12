@@ -37,7 +37,7 @@ class DeceiveEnv(BaseEnv):
         atk_init_ob_space = spaces.Box(low=0., high=1., shape=[n_targets])
         dfd_init_ob_space = spaces.Box(low=0., high=1., shape=[n_targets])
 
-        self.ob_length = ob_length = 2 * (2 + n_targets)
+        self.ob_length = ob_length = 4 * (2 + n_targets)
         self.ac_length = ac_length = 5
 
         atk_info_ob_space = spaces.Box(low=0., high=1., shape=[steps_per_round * (ob_length + ac_length) * 2])
@@ -131,7 +131,12 @@ class DeceiveEnv(BaseEnv):
         atk_touching = [self.scenario.is_touching(self.world.agents[0], self.world.landmarks[i]) for i in range(self.n_targets)]
         dfd_touching = [self.scenario.is_touching(self.world.agents[1], self.world.landmarks[i]) for i in range(self.n_targets)]
 
+        for i in range(2):
+            for _ in range(self.round):
+                reward_n[i] *= 5
+
         sub_done = False
+
         if self.steps_so_far == self.steps_per_round:
             # for i, landmark in enumerate(self.world.landmarks):
             #     if self.scenario.is_touching(self.world.agents[0], landmark):

@@ -80,7 +80,8 @@ class NaiveController(BaseController):
 
     def _train(self, max_steps=10000, policy_store_every=100, policy_pool_size=50, test_every=100,
                show_every=None, test_max_steps=100, record_assessment=False, train_steps=None, reset=False,
-               sec_prob=False, save_every=None, save_path=None, load_state=None, load_path=None, store_results=False):
+               sec_prob=False, save_every=None, save_path=None, load_state=None, load_path=None, store_results=False,
+               sub_load_path=None):
         if train_steps is None:
             train_steps = [1 for _ in range(self.env.num_agents)]
         self.policy_store_every = policy_store_every
@@ -106,6 +107,10 @@ class NaiveController(BaseController):
 
         if load_state:
             self.load(load_path)
+
+        if sub_load_path is not None:
+            for i, agent in enumerate(self.agents):
+                agent.load_sub(join_path(sub_load_path, "agent-{}".format(i)))
 
         if store_results:
             local_results = self.records["local_results"]

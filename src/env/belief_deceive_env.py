@@ -36,11 +36,11 @@ class DeceiveEnv(BaseEnv):
         self.round = None
         self.last_obs_n = None
 
-        self.ob_length = ob_length = 4 * (2 + n_targets)
+        self.ob_length = ob_length = self.scenario.ob_length
         self.ac_length = ac_length = 5
 
-        atk_ob_space = spaces.Box(low=0., high=1., shape=[n_rounds + n_targets * 2 + ob_length + 1])
-        dfd_ob_space = spaces.Box(low=0., high=1., shape=[n_rounds + n_targets + ob_length + 1])
+        atk_ob_space = spaces.Box(low=0., high=1., shape=[1 + n_targets * 2 + ob_length + 1])
+        dfd_ob_space = spaces.Box(low=0., high=1., shape=[1 + n_targets + ob_length + 1])
 
         ac_space = spaces.Discrete(ac_length)
 
@@ -62,11 +62,12 @@ class DeceiveEnv(BaseEnv):
             self.dfd_policy = policy
 
     def _get_atk_ob(self, t, belief, n, world_obs, s):
-        return np.concatenate([one_hot(self.n_rounds, n), one_hot(self.n_targets, t), belief, world_obs,
-                               [s / self.steps_per_round]])
+        return np.concatenate([[1.], one_hot(self.n_targets, t), belief, world_obs,
+                               [s / self.steps_per_round], one_hot(self.n_rounds, n)])
 
     def _get_dfd_ob(self, belief, n, world_obs, s):
-        return np.concatenate([one_hot(self.n_rounds, n), belief, world_obs, [s / self.steps_per_round]])
+        return np.concatenate([[1.], belief, world_obs, [s / self.steps_per_round],
+                               one_hot(self.n_rounds, n)])
 
     def _get_ob(self, t, belief, n, world_obs_n, s):
         return [self._get_atk_ob(t, belief, n, world_obs_n[0], s), self._get_dfd_ob(belief, n, world_obs_n[1], s)]
@@ -101,6 +102,8 @@ class DeceiveEnv(BaseEnv):
 
     def update_belief(self, belief, probs):
         tmp = belief * probs
+        if np.sum(tmp) < 1e-2:
+            return np.ones(self.n_targets) / self.n_targets
         return tmp / np.sum(tmp)
 
     def step(self, actions, action_probs):
@@ -112,11 +115,14 @@ class DeceiveEnv(BaseEnv):
 
         probs = [self.atk_policy.prob(self._get_atk_ob(t, self.belief, self.round, self.last_obs_n[0],
                                                        self.steps_so_far), actions[0]) for t in range(self.n_targets)]
-        self.belief = self.update_belief(self.belief, np.array(probs))
+        # self.belief = self.update_belief(self.belief, np.array(probs))
         # print(self.belief)
 
         self.steps_so_far += 1
         sub_done = False
+        for i in range(2):
+            for _ in range(self.round):
+                reward_n[i] *= 2
         if self.steps_so_far == self.steps_per_round:
             # for i, landmark in enumerate(self.world.landmarks):
             #     if self.scenario.is_touching(self.world.agents[0], landmark):
