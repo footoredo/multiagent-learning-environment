@@ -48,7 +48,7 @@ class NaiveController(BaseController):
             else:
                 raise NotImplementedError
 
-            return ReducedEnv(self.env,
+            return ReducedEnv(self.env if i == 1 else self.atk_env,
                               fixed_indices=[j for j in range(self.num_agents) if j != i],
                               fixed_policies=fixed_policies,
                               allow_single=True)
@@ -124,6 +124,9 @@ class NaiveController(BaseController):
         self.avg_policy = [agent.get_average_policy() for agent in self.agents]
         env.update_policy(0, self.latest_policy[0])
         env.update_policy(1, self.latest_policy[1])
+        self.atk_env = env.get_atk_env()
+        self.atk_env.update_policy(0, self.latest_policy[0])
+        self.atk_env.update_policy(1, self.latest_policy[1])
         self.policy_pool = [[] for _ in self.agents]
 
         def check_every(every):
@@ -146,6 +149,7 @@ class NaiveController(BaseController):
                         env.update_attacker_policy(self.get_policy_with_version(self.policies[0], version="latest"))
                     train_info[i].append(agent.train(i, None, self.step / max_steps, self.step))
                     env.update_policy(i, self.latest_policy[i])
+                    self.atk_env.update_policy(i, self.latest_policy[i])
 
             if check_every(test_every):
                 # local_result, global_result = self.run_test(test_max_steps)
@@ -193,8 +197,8 @@ class NaiveController(BaseController):
                 self.save(step_save_path)
 
         if record_assessment:
-            for i in range(5):
-                self.env.simulate([self.latest_policy[i] for i in range(self.num_agents)], verbose=True,
+            for i in range(1):
+                self.env.simulate([self.avg_policy[i] for i in range(self.num_agents)], verbose=True, benchmark=True,
                                   save_dir=join_path_and_check(save_path, "eval-{}.gif".format(i)))
             final_assessment = self.env.assess_strategies([self.latest_policy[i]
                                                            for i in range(self.num_agents)], trials=1000)

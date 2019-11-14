@@ -1,5 +1,5 @@
 from env.base_env import BaseEnv
-from .scenario.deceive_grid_v2 import Scenario
+from .scenario.deceive_grid import Scenario
 from multiagent.environment import MultiAgentEnv
 from agent.policy import Policy
 from gym import spaces
@@ -21,14 +21,15 @@ def one_hot(n, i):
 
 
 class DeceiveEnv(BaseEnv):
-    def __init__(self, n_targets, prior, n_rounds, steps_per_round, random_prior=True, is_atk=False):
+    def __init__(self, n_targets, prior, n_steps, steps_per_round, size=3, random_prior=True, is_atk=False):
         self.n_targets = n_targets
         self.prior = np.array(prior)
         self.random_prior = random_prior
-        self.scenario = Scenario(n_targets, 0)
+        self.size = size
+        self.scenario = Scenario(n_targets, 0, size=size, random=True)
         self.world = self.scenario.make_world()
         self.env = None
-        self.n_rounds = n_rounds
+        self.n_steps = n_steps
         self.steps_per_round = steps_per_round
         self.history = None
         self.record = None
@@ -37,11 +38,13 @@ class DeceiveEnv(BaseEnv):
         self.last_obs_n = None
         self.is_atk = is_atk
 
+        self.n_rounds = (self.n_steps + self.steps_per_round - 1) // self.steps_per_round
+
         self.ob_length = ob_length = self.scenario.ob_length
         self.ac_length = ac_length = 5
 
-        atk_ob_space = spaces.Box(low=0., high=1., shape=[1 + n_targets * 2 + ob_length + 1])
-        dfd_ob_space = spaces.Box(low=0., high=1., shape=[1 + n_targets + ob_length + 1])
+        atk_ob_space = spaces.Box(low=0., high=1., shape=[n_targets + ob_length])
+        dfd_ob_space = spaces.Box(low=0., high=1., shape=[ob_length])
 
         ac_space = spaces.Discrete(ac_length)
 
@@ -57,7 +60,8 @@ class DeceiveEnv(BaseEnv):
         self.dfd_policy = None
 
     def get_atk_env(self):
-        return DeceiveEnv(self.n_targets, self.prior, self.n_rounds, self.steps_per_round, self.random_prior, True)
+        return DeceiveEnv(self.n_targets, self.prior, self.n_steps, self.steps_per_round,
+                          self.size, self.random_prior, True)
 
     def update_policy(self, i, policy):
         if i == 0:
@@ -66,12 +70,10 @@ class DeceiveEnv(BaseEnv):
             self.dfd_policy = policy
 
     def _get_atk_ob(self, t, belief, n, world_obs, s):
-        return np.concatenate([[1.], one_hot(self.n_targets, t), belief, world_obs,
-                               [s / self.steps_per_round], one_hot(self.n_rounds, n)])
+        return np.concatenate([belief, one_hot(self.n_steps, s), one_hot(self.n_targets, t), world_obs])
 
     def _get_dfd_ob(self, belief, n, world_obs, s):
-        return np.concatenate([[1.], belief, world_obs, [s / self.steps_per_round],
-                               one_hot(self.n_rounds, n)])
+        return np.concatenate([belief, one_hot(self.n_steps, s), world_obs])
 
     def _get_ob(self, t, belief, n, world_obs_n, s):
         return [self._get_atk_ob(t, belief, n, world_obs_n[0], s), self._get_dfd_ob(belief, n, world_obs_n[1], s)]
@@ -86,7 +88,7 @@ class DeceiveEnv(BaseEnv):
             prior[i] = x[i + 1] - x[i]
         return prior
 
-    def reset(self, verbose=False):
+    def reset(self, benchmark=False, verbose=False):
         scenario = self.scenario
         if self.random_prior:
             self.prior = self.generate_prior()
@@ -94,8 +96,20 @@ class DeceiveEnv(BaseEnv):
             self.goal = scenario.goal = np.random.choice(self.n_targets)
         else:
             self.goal = scenario.goal = np.random.choice(self.n_targets, p=self.prior)
-
         world = self.world
+        if benchmark:
+            # world.agents[0].state.p_pos = np.array([-0.5, -0.5]) # for step-1
+            # world.agents[1].state.p_pos = np.array([-0.0, 0.0])
+            # world.agents[0].state.p_pos = np.array([-0.5, 0.0]) # for step-2
+            # world.agents[1].state.p_pos = np.array([0.5, 0.0])
+            # world.agents[0].state.p_pos = np.array([-0.0, 0.0]) # for step-1
+            # world.agents[1].state.p_pos = np.array([-0.0, 0.0])
+            world.agents[0].state.p_pos = np.array([1.0, 0.0])
+            world.agents[1].state.p_pos = np.array([0.0, 0.0])
+            # world.agents[0].state.p_pos = np.array([1.0, 1.0])
+            # world.agents[1].state.p_pos = np.array([1.0, 0.0])
+            self.goal = scenario.goal = 1
+            scenario.change_position = False
         self.env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation, info_callback=None)
         self.env.discrete_action_input = True
 
@@ -114,8 +128,10 @@ class DeceiveEnv(BaseEnv):
             return np.ones(self.n_targets) / self.n_targets
         return tmp / np.sum(tmp)
 
-    def step(self, actions, action_probs):
+    def step(self, actions, action_probs, frames=None):
         obs_n, reward_n, done_n, info_n = self.env.step(actions)
+        if frames is not None:
+            frames.append(self.env.render('rgb_array')[0])
         # for i in range(2):
         #     reward_n[i] *= self.round + 1
         atk_touching = [self.scenario.is_touching(self.world.agents[0], self.world.landmarks[i]) for i in range(self.n_targets)]
@@ -131,7 +147,7 @@ class DeceiveEnv(BaseEnv):
         for i in range(2):
             for _ in range(self.round):
                 reward_n[i] *= 2
-        if self.steps_so_far == self.steps_per_round:
+        if self.steps_so_far % self.steps_per_round == 0:
             # for i, landmark in enumerate(self.world.landmarks):
             #     if self.scenario.is_touching(self.world.agents[0], landmark):
             #         if self.scenario.is_touching(self.world.agents[1], landmark):
@@ -149,7 +165,9 @@ class DeceiveEnv(BaseEnv):
             #     reward_n[1] += 20
 
             obs_n = self.env.reset()
-            self.steps_so_far = 0
+            if frames is not None and self.steps_so_far < self.n_steps:
+                frames.append(self.env.render('rgb_array')[0])
+            # self.steps_so_far = 0
             self.round += 1
             # self.history.append(np.copy(self.record))
             # self.record = np.zeros(self.steps_per_round * (self.ob_length + self.ac_length) * 2)
@@ -158,16 +176,16 @@ class DeceiveEnv(BaseEnv):
         self.last_obs_n = obs_n
 
         return self._get_ob(self.goal, self.belief, self.round, obs_n, self.steps_so_far), reward_n, \
-               [self.goal, self.goal], self.round >= self.n_rounds, [sub_done, sub_done], [atk_touching, dfd_touching]
+               [self.goal, self.goal], self.steps_so_far >= self.n_steps, [sub_done, sub_done], [atk_touching, dfd_touching]
 
-    def simulate(self, strategies, verbose=False, save_dir=None, prior=None):
+    def simulate(self, strategies, verbose=False, save_dir=None, prior=None, benchmark=False):
         rp = self.random_prior
         if prior is not None:
             self.prior = np.copy(prior)
             self.random_prior = False
         atk_policy, dfd_policy = strategies
         atk_strategy, dfd_strategy = atk_policy.strategy_fn, dfd_policy.strategy_fn
-        ob, _, _ = self.reset()
+        ob, _, _ = self.reset(benchmark)
         atk_rew = 0.
         dfd_rew = 0.
         atk_touching = [[0 for _ in range(self.n_targets)] for _ in range(self.n_rounds)]
@@ -192,7 +210,7 @@ class DeceiveEnv(BaseEnv):
                 # if sub_steps == 0:
                 #     print("tpred:", atk_policy.tpred(ob[0]))
                 #     print("tpred:", dfd_policy.tpred(ob[1]))
-            ob, rew, _, done, sub_done, touching = self.step([atk_a, dfd_a], None)
+            ob, rew, _, done, sub_done, touching = self.step([atk_a, dfd_a], None, frames=frames if verbose else None)
             sub_steps += 1
             at, dt = touching
 
@@ -203,8 +221,8 @@ class DeceiveEnv(BaseEnv):
             if sub_done[0]:
                 steps += 1
                 sub_steps = 0
-            if not done and verbose:
-                frames.append(self.env.render('rgb_array')[0])
+            # if verbose:
+            #     frames.append(self.env.render('rgb_array')[0])
             # self.env.render()
 
             atk_rew += rew[0]
@@ -265,4 +283,4 @@ class DeceiveEnv(BaseEnv):
                 self._assess_strategies(strategies, trials, debug, prior)
                 print("")
         else:
-            self._assess_strategies(strategies, trials, debug)
+            return self._assess_strategies(strategies, trials, debug)

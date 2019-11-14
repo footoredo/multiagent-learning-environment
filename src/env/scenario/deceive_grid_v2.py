@@ -9,7 +9,7 @@ def distance(a, b):
 
 
 class Scenario(BaseScenario):
-    def __init__(self, n_targets, goal, size=3, random=False):
+    def __init__(self, n_targets, goal, size=5, random=False):
         self.n_targets = n_targets
         self.goal = goal
         self.multiplier = 1
@@ -73,7 +73,8 @@ class Scenario(BaseScenario):
         # set random initial states
         # agent_positions = [self.get_position(1, 1), self.get_position(1, self.size - 2)]
         agent_positions = [self.get_position(1, self.size // 2), self.get_position(1, self.size // 2)]
-        np.random.shuffle(agent_positions)
+        # agent_positions = [self.get_position(1, self.size // 2 - 1), self.get_position(2, self.size // 2)]
+        # np.random.shuffle(agent_positions)
         # landmark_positions = [self.get_position(self.size - 2, 1), self.get_position(self.size - 2, self.size - 2)]
         landmark_positions = [self.get_position(self.size // 2 + 1, self.size // 2 - 1), self.get_position(self.size // 2 + 1, self.size // 2 + 1)]
         for i, landmark in enumerate(world.landmarks):
@@ -83,8 +84,9 @@ class Scenario(BaseScenario):
         for i, agent in enumerate(world.agents):
             # agent.state.p_pos = np.random.uniform(-1, +1, world.dim_p)
             # agent.state.p_pos = self.random_position()
-            if self.change_position:
-                agent.state.p_pos = agent_positions[i] if not self.random else self.random_position()
+            # if self.change_position:
+            #     agent.state.p_pos = agent_positions[i] if not self.random else self.random_position()
+            agent.state.p_pos = agent_positions[i]
             agent.state.p_vel = np.zeros(world.dim_p)
             agent.state.c = np.zeros(world.dim_c)
             agent.live = True
@@ -167,7 +169,6 @@ class Scenario(BaseScenario):
         # shaping = agent.last_distance - dist
         shaping = 0.
         agent.last_distance = dist
-        agent.counter -= 1
 
         adv_agent = world.agents[0]
 
@@ -203,19 +204,20 @@ class Scenario(BaseScenario):
         rew = 0.
         if distance(agent.state.p_pos, agent.goal_a.state.p_pos) < agent.size + agent.goal_a.size:
             if not distance(good_agent.state.p_pos, agent.goal_a.state.p_pos) < good_agent.size + agent.goal_a.size:
-                rew += 20.
+                rew += 45.
             else:
-                rew += 10.
-            # rew -= agent.counter
+                rew += 25.
+            rew -= agent.counter
             agent.arrive_time = agent.counter
             # rew += 20.
 
         for landmark in world.landmarks:
             if distance(agent.state.p_pos, landmark.state.p_pos) < agent.size + landmark.size:
                 agent.live = False
+                rew -= 5.
 
-        # pen = np.abs((agent.state.p_pos - agent.goal_a.state.p_pos)[1])
-        pen = 0.
+        pen = np.abs((agent.state.p_pos - agent.goal_a.state.p_pos)[1])
+        # pen = 0.
 
         return shaping + rew - pen
 
@@ -223,7 +225,8 @@ class Scenario(BaseScenario):
         # get positions of all entities in this agent's reference frame
         entity_pos = []
         for entity in world.landmarks:
-            entity_pos.append(entity.state.p_pos - agent.state.p_pos)
+            for agent in world.agents:
+                entity_pos.append(entity.state.p_pos - agent.state.p_pos)
         # entity colors
         entity_color = []
         for entity in world.landmarks:
@@ -231,7 +234,8 @@ class Scenario(BaseScenario):
         # communication of all other agents
         all_pos = []
         for other in world.agents:
-            all_pos.append(other.state.p_pos - agent.state.p_pos)
+            for agent in world.agents:
+                all_pos.append(other.state.p_pos - agent.state.p_pos)
 
         if not agent.adversary:
             # return np.concatenate([agent.goal_a.state.p_pos - agent.state.p_pos] + entity_pos + other_pos)

@@ -1,10 +1,10 @@
 from env.matrix_env import MatrixEnv
-from env.belief_deceive_env_v2 import DeceiveEnv
+from env.belief_deceive_env import DeceiveEnv
 from controller.belief_controller_pw import NaiveController
 from agent.dummy_agent import DummyAgent
 from agent.infant_agent import InfantAgent
 from agent.self_play_agent import SelfPlayAgent
-from agent.ppo_agent_stacked_pw import PPOAgentStacked
+from agent.ppo_agent_stacked import PPOAgentStacked
 from agent.pac_agent import PACAgent
 from agent.mlp_policy import MLPPolicy
 # from agent.recurrent_policy import RecurrentPolicy
@@ -41,7 +41,7 @@ def parse_args():
 
     parser.add_argument('--agent', type=str, default="ppo")
     parser.add_argument('--n-targets', type=int, default=2)
-    parser.add_argument('--n-steps', type=int, default=2)
+    parser.add_argument('--n-rounds', type=int, default=2)
     parser.add_argument('--steps-per-round', type=int, default=5)
     parser.add_argument('--prior', type=float, nargs='+')
     parser.add_argument('--learning-rate', type=float, default=5e-6)
@@ -75,7 +75,7 @@ def get_make_ppo_agent(timesteps_per_actorbatch, max_iterations, n_steps, steps_
         agent = PPOAgentStacked(name="ppo_agent_%d" % ppo_agent_cnt, policy_fn=policy,
                                 ob_space=observation_space,
                                 ac_space=action_space, handlers=handlers,
-                                n_rounds=n_steps, n_types=n_targets, steps_per_round=1,
+                                n_rounds=n_rounds, steps_per_round=steps_per_round,
                                 timesteps_per_actorbatch=timesteps_per_actorbatch, clip_param=0.2, entcoeff=0.01,
                                 optim_epochs=1, optim_stepsize=learning_rate, beta1=0.9,
                                 gamma=0.99, lam=0.95, max_iters=max_iterations,
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     # seed = "benchmark"
     agent = args.agent
     n_targets = args.n_targets
-    n_steps = args.n_steps
+    n_rounds = args.n_rounds
     steps_per_round = args.steps_per_round
     prior = args.prior
     learning_rate = args.learning_rate
@@ -120,10 +120,10 @@ if __name__ == "__main__":
     result_folder = "../result/"
     plot_folder = "../plots/"
     exp_name = args.exp_name or \
-        "_".join(["deceive" + str(args.other),
+        "_".join(["deceive-old" + str(args.other),
                   "recurrent",
                   agent,
-                  "game:{}-{}-{}-{}".format(n_targets, n_steps, steps_per_round, ":".join(map(str, prior)) if not args.random_prior else "random"),
+                  "game:{}-{}-{}-{}".format(n_targets, n_rounds, steps_per_round, ":".join(map(str, prior))) if not args.random_prior else "random",
                   "{:.0e}".format(Decimal(learning_rate)),
                   "test_every:{}".format(test_every),
                   "network:{}-{}".format(network_width, network_depth),
@@ -165,14 +165,14 @@ if __name__ == "__main__":
 
     for p in [.5]:
         for _ in range(1):
-            env = DeceiveEnv(n_targets=n_targets, n_steps=n_steps, steps_per_round=steps_per_round, prior=prior,
+            env = DeceiveEnv(n_targets=n_targets, n_rounds=n_rounds, steps_per_round=steps_per_round, prior=prior,
                              random_prior=args.random_prior)
             # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
             if train:
                 # test_every = 1
                 if agent == "ppo":
-                    agents = [get_make_ppo_agent(timesteps_per_batch, iterations_per_round, args.n_steps, args.steps_per_round),
-                              get_make_ppo_agent(timesteps_per_batch, iterations_per_round, args.n_steps, args.steps_per_round)]
+                    agents = [get_make_ppo_agent(timesteps_per_batch, iterations_per_round, args.n_rounds, args.steps_per_round),
+                              get_make_ppo_agent(timesteps_per_batch, iterations_per_round, args.n_rounds, args.steps_per_round)]
                 else:
                     raise NotImplementedError
                 controller = NaiveController(env, agents)

@@ -568,6 +568,7 @@ class BeliefSecurityEnv(BaseEnv):
         print("vpred:", [attacker_strategy.vpred(self._get_atk_ob(i, self.prior, 0)) for i in range(self.n_types)],
               defender_strategy.vpred(self._get_dfd_ob(self.prior, 0)))
 
+
         def display(ts, t='?'):
             for k, v in ts.items():
                 if len(k) < 3:
@@ -579,6 +580,7 @@ class BeliefSecurityEnv(BaseEnv):
         print("Defender:")
         display(tds)
 
+        for_sheet = sum([tas[t][''].tolist() for t in range(self.n_types)], []) + tds[''].tolist()
         # return None
 
         atk_br = self.attacker_strategy_exploiter.run(tas, self.prior)
@@ -619,6 +621,9 @@ class BeliefSecurityEnv(BaseEnv):
         print("Payoff:", [atk_u[t][initial_state] for t in range(self.n_types)], def_u[initial_state])
 
         print("Overall:", atk_eps, def_eps)
+
+        for_sheet += atk_eps + [def_eps] + [atk_u[t][initial_state] for t in range(self.n_types)] + [def_u[initial_state]]
+        print("\t".join(list(map(str, for_sheet))))
 
         return (atk_eps, atk_pbne_eps), (def_eps, def_pbne_eps)
 
