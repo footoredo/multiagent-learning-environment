@@ -171,6 +171,7 @@ class SecurityEnv(BaseEnv):
                         else:
                             self.payoff[t, i, j, 1] = self.dfd_pen[j]
 
+        print(self.payoff)
         # print(self.payoff[0, :, :, 0])
         # print(self.payoff[0, :, :, 1])
 

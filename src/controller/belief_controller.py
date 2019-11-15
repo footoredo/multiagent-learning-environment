@@ -198,10 +198,10 @@ class BeliefController(BaseController):
         print("final avg:")
         avg_assessment = self.env.assess_strategies([self.avg_policy[i]
                                                      for i in range(self.num_agents)])
-        print("final:")
-        assessment = self.env.assess_strategies([self.latest_policy[i]
-                                                     for i in range(self.num_agents)])
-        # atk_vn, dfd_vn = self.env.calc_vn(self.avg_policy[0], self.avg_policy[1], 4096, 500)
+        # print("final:")
+        # assessment = self.env.assess_strategies([self.latest_policy[i]
+        #                                              for i in range(self.num_agents)])
+        # atk_vn, dfd_vn = self.env.cfalc_vn(self.avg_policy[0], self.avg_policy[1], 4096, 500)
         # for v in atk_vn:
         #     v.save(save_path)
         # dfd_vn.save(save_path)

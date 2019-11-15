@@ -580,7 +580,13 @@ class BeliefSecurityEnv(BaseEnv):
         print("Defender:")
         display(tds)
 
-        for_sheet = sum([tas[t][''].tolist() for t in range(self.n_types)], []) + tds[''].tolist()
+        def cut(s):
+            if len(s) == 2:
+                return [s[0]]
+            else:
+                return s
+
+        for_sheet = sum([cut(tas[t][''].tolist()) for t in range(self.n_types)], []) + cut(tds[''].tolist())
         # return None
 
         atk_br = self.attacker_strategy_exploiter.run(tas, self.prior)
