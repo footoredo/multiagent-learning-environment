@@ -116,7 +116,10 @@ class BeliefController(BaseController):
             "local_results": [],
             "global_results": [],
             "current_assessments": [],
-            "assessments": []
+            "assessments": [],
+            "strategy": [],
+            "payoff": [],
+            "distance": []
         }
 
         self.step = 0
@@ -166,14 +169,14 @@ class BeliefController(BaseController):
                     # rews = self.run_benchmark(1000)
                     # assessment = self.env.assess_strategies([self.statistics.get_avg_strategy(i)
                     #                                          for i in range(self.num_agents)])
-                    current_assessment = self.env.assess_strategies([self.latest_policy[i]
+                    current_assessment, _ = self.env.assess_strategies([self.latest_policy[i]
                                                                      for i in range(self.num_agents)])
 
                     atk_p, dfd_p = self.env.get_strategy_profile([self.latest_policy[i] for i in range(self.num_agents)])
                     local_results.append((atk_p, dfd_p))
 
                     print("AVG:")
-                    avg_assessment = self.env.assess_strategies([self.avg_policy[i]
+                    avg_assessment, _ = self.env.assess_strategies([self.avg_policy[i]
                                                                      for i in range(self.num_agents)])
                     atk_p, dfd_p = self.env.get_strategy_profile([self.avg_policy[i] for i in range(self.num_agents)])
                     global_results.append((atk_p, dfd_p))
@@ -196,8 +199,10 @@ class BeliefController(BaseController):
             if check_every(save_every):
                 self.save(join_path_and_check(save_path, "step-{}".format(self.step)))
         print("final avg:")
-        avg_assessment = self.env.assess_strategies([self.avg_policy[i]
+        avg_assessment, avg_payoff = self.env.assess_strategies([self.avg_policy[i]
                                                      for i in range(self.num_agents)])
+        self.records["distance"] = avg_assessment
+        self.records["payoff"] = avg_payoff
         # print("final:")
         # assessment = self.env.assess_strategies([self.latest_policy[i]
         #                                              for i in range(self.num_agents)])
@@ -218,6 +223,8 @@ class BeliefController(BaseController):
         #     self.records["random_assessment"] = random_assessment
 
         # self.run_benchmark(10000)
+        atk_p, dfd_p = self.env.get_strategy_profile([self.avg_policy[i] for i in range(self.num_agents)])
+        self.records["strategy"] = (atk_p, dfd_p)
         return self.records, local_results, global_results, train_info
 
     def test(self, *args, **kwargs):

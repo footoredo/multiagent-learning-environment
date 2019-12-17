@@ -190,7 +190,7 @@ class BeliefSecurityEnv(BaseEnv):
                         if zero_sum:
                             self.payoff[t, i, j, 1] = -self.atk_rew[t, i]
                         else:
-                            self.payoff[t, i, j, 1] = self.dfd_pen[j]
+                            self.payoff[t, i, j, 1] = self.dfd_pen[i]
 
         # print(self.payoff[0, :, :, 0])
         # print(self.payoff[0, :, :, 1])

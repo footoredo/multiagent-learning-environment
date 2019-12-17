@@ -44,28 +44,31 @@ def parse_args():
     parser.add_argument('--n-slots', type=int, default=2)
     parser.add_argument('--n-types', type=int, default=2)
     parser.add_argument('--n-rounds', type=int, default=2)
-    parser.add_argument('--beta1', type=float, default=0.5)
+    parser.add_argument('--beta1', type=float, default=0.0)
+    parser.add_argument('--beta', type=float, default=1.0)
     parser.add_argument('--prior', type=float, nargs='+')
     parser.add_argument('--random-prior', action="store_true")
     parser.add_argument('--reset', action="store_true")
     parser.add_argument('--zero-sum', action="store_true")
-    parser.add_argument('--learning-rate', type=float, default=5e-6)
+    parser.add_argument('--learning-rate', type=float, default=1e-3)
     parser.add_argument('--schedule', type=str, nargs="+", default="constant")
     parser.add_argument('--opponent', type=str, nargs="+", default="latest")
-    parser.add_argument('--test-every', type=int, default=10)
+    parser.add_argument('--test-every', type=int, default=1000)
     parser.add_argument('--save-every', type=int)
     parser.add_argument('--reset-every', type=int)
     parser.add_argument('--load', action="store_true")
     parser.add_argument('--load-step', type=int)
-    parser.add_argument('--max-steps', type=int, default=10000)
-    parser.add_argument('--network-width', type=int, default=16)
-    parser.add_argument('--network-depth', type=int, default=2)
+    parser.add_argument('--save-path', type=str)
+    parser.add_argument('--max-steps', type=int, default=1000)
+    parser.add_argument('--network-width', type=int, default=32)
+    parser.add_argument('--network-depth', type=int, default=1)
     parser.add_argument('--test-steps', type=int, default=1000)
-    parser.add_argument('--timesteps-per-batch', type=int, default=8)
-    parser.add_argument('--iterations-per-round', type=int, default=16)
+    parser.add_argument('--timesteps-per-batch', type=int, default=100)
+    parser.add_argument('--iterations-per-round', type=int, default=1)
     parser.add_argument('--exp-name', type=str)
     parser.add_argument('--sub-load-path', type=str)
     parser.add_argument('--vn-load-path', type=str)
+    parser.add_argument('--save-dir', type=str)
 
     return parser.parse_args()
 
@@ -166,6 +169,7 @@ if __name__ == "__main__":
                   "belief",
                   # args.other,
                   agent,
+                  "beta:{}".format(args.beta),
                   "seed:{}".format(seed),
                   "game:{}-{}-{}-{}".format(n_slots, n_types, n_rounds, "random" if args.random_prior else ":".join(map(str, prior))),
                   "beta1:{}".format(args.beta1),
@@ -183,6 +187,8 @@ if __name__ == "__main__":
     # exp_name = "security_seed:5410_2-2-2_gs_no-reset_5e-6_wolf_adv:20.0_1:1_latest_10"
     exp_dir = os.path.join(result_folder, exp_name)
     plot_dir = os.path.join(plot_folder, exp_name)
+    if args.save_dir is not None:
+        exp_dir = args.save_dir
 
     # logger.configure("qweqw.log")
     #train_cnt = np.zeros(shape=(2,2), dtype=np.int32)
@@ -219,7 +225,7 @@ if __name__ == "__main__":
         for _ in range(1):
             env = BeliefSecurityEnv(n_slots=n_slots, n_types=n_types, prior=prior, n_rounds=n_rounds, zero_sum=zero_sum,
                                     seed=seed, export_gambit=n_rounds <= 5 and n_slots <= 2,
-                                    random_prior=args.random_prior, vn_load_path=args.vn_load_path)
+                                    random_prior=args.random_prior, vn_load_path=args.vn_load_path, beta=args.beta)
             # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
             if train:
                 # test_every = 1
@@ -239,84 +245,12 @@ if __name__ == "__main__":
                                      load_state=load, load_path=join_path(exp_dir, "step-{}".format(load_step)),
                                      sub_load_path=args.sub_load_path,
                                      save_every=save_every, save_path=exp_dir, store_results=False)
-                env.export_settings(join_path_and_check(exp_dir, "env_settings.obj"))
-                assessments = train_result["assessments"]
-                current_assessments = train_result["current_assessments"]
-                # joblib.dump(train_result["final_assessment"], join_path_and_check(exp_dir, "final_assessment.obj"))
-                joblib.dump(local_results, join_path_and_check(exp_dir, "local_results.obj"))
-                joblib.dump(train_info, join_path_and_check(exp_dir, "train_info.obj"))
-                # joblib.dump(train_result["local_"], join_path_and_check(exp_dir, "final_assessment.obj"))
-                print(assessments)
-                # print(train_result["random_assessment"])
-                for i in range(test_every, max_steps + 1, test_every):
-                    for t in range(args.n_types):
-                        res["episode"].append(i)
-                        res["assessment"].append(assessments[i // test_every - 1][0][0][t])
-                        res["current_assessments"].append(current_assessments[i // test_every - 1][0][0][t])
-                        res["player"].append("attacker-{}".format(t))
-
-                    res["episode"].append(i)
-                    res["assessment"].append(assessments[i // test_every - 1][1][0])
-                    res["current_assessments"].append(current_assessments[i // test_every - 1][1][0])
-                    res["player"].append("defender")
-
-                    for t in range(args.n_types):
-                        res["episode"].append(i)
-                        res["assessment"].append(assessments[i // test_every - 1][0][1][t])
-                        res["current_assessments"].append(current_assessments[i // test_every - 1][0][1][t])
-                        res["player"].append("attacker-{} PBNE".format(t))
-
-                    res["episode"].append(i)
-                    res["assessment"].append(assessments[i // test_every - 1][1][1])
-                    res["current_assessments"].append(current_assessments[i // test_every - 1][1][1])
-                    res["player"].append("defender PBNE")
-                    
-                res2 = {
-                    "episode": [],
-                    "prob": [],
-                    "current_prob": [],
-                    "player": []
-                }
-                
-                for i in range(test_every, max_steps + 1, test_every):
-                    for t in range(args.n_types):
-                        res2["episode"].append(i)
-                        res2["prob"].append(local_results[i // test_every - 1][0][t][0])
-                        res2["current_prob"].append(global_results[i // test_every - 1][0][t][0])
-                        res2["player"].append("attacker-{}".format(t))
-
-                    res2["episode"].append(i)
-                    res2["prob"].append(local_results[i // test_every - 1][1][0])
-                    res2["current_prob"].append(global_results[i // test_every - 1][1][0])
-                    res2["player"].append("defender")
-
-                print(exp_name)
-
-                joblib.dump(res, join_path_and_check(exp_dir, "result.obj"))
-                df = pd.DataFrame(data=res)
-                sns.set()
-                sns.lineplot(x="episode", y="assessment", hue="player", data=df)
-                plt.savefig(join_path_and_check(plot_dir, "result.png"), dpi=600)
-                plt.show()
-                sns.lineplot(x="episode", y="current_assessments", hue="player", data=df)
-                plt.savefig(join_path_and_check(plot_dir, "current_result.png"), dpi=600)
-                plt.show()
-                df2 = pd.DataFrame(data=res2)
-                sns.lineplot(x="episode", y="prob", hue="player", data=df2)
-                plt.savefig(join_path_and_check(plot_dir, "prob.png"), dpi=600)
-                plt.show()
-                sns.lineplot(x="episode", y="current_prob", hue="player", data=df2)
-                plt.savefig(join_path_and_check(plot_dir, "current_prob.png"), dpi=600)
-                plt.show()
-            else:
-                pass
-                # lie_p = env.get_lie_prob()
-                # print(p, lie_p)
-                # s += lie_p
-                # res["p"].append(p)
-                # res["lie_p"].append(lie_p)
-        # res["p"].append(p)
-        # res["lie_p"].append(s / T)
+                import joblib
+                joblib.dump({
+                    "strategy": train_result["strategy"],
+                    "payoff": train_result["payoff"],
+                    "distance": train_result["distance"]
+                }, join_path_and_check(exp_dir, "part.info"))
 
 
 else:

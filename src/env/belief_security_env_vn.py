@@ -24,12 +24,13 @@ class PackedVN(Pack):
         return PackedVN(Pack.from_file(filename).key_points)
 
 class GambitSolver:
-    def __init__(self, n_types, n_slots, n_stages, prior, payoff):
+    def __init__(self, n_types, n_slots, n_stages, prior, payoff, beta):
         self.n_types = n_types
         self.n_slots = n_slots
         self.n_stages = n_stages
         self.prior = prior
         self.payoff = payoff
+        self.beta = beta
         self.infosets = None
         self.file = None
         self.solution = None
@@ -46,7 +47,7 @@ class GambitSolver:
         self.println("} 0")
 
         for t in range(self.n_types):
-            self.recursive(self.n_stages, t, -1, -1, [t], [])
+            self.recursive(self.n_stages, t, -1, -1, [t], [], 1.0)
 
         self.file.close()
 
@@ -86,18 +87,18 @@ class GambitSolver:
             self.infosets[player].append(history)
         return self.infosets[player].index(history) + 1
 
-    def print_outcome(self, t, i, j):
+    def print_outcome(self, t, i, j, k):
         on = t * self.n_slots * self.n_slots + i * self.n_slots + j + 1
-        ar = self.payoff[t, i, j, 0]
-        dr = self.payoff[t, i, j, 1]
+        ar = self.payoff[t, i, j, 0] * k
+        dr = self.payoff[t, i, j, 1] * k
         self.println(" %d \"(%d,%d,%d)\" { %.5f, %.5f }" % (on, t, i, j, ar, dr))
 
-    def recursive(self, remain_stage, t, li, lj, h0, h1):
+    def recursive(self, remain_stage, t, li, lj, h0, h1, k):
         assert (remain_stage >= 0)
 
         if remain_stage == 0:
             self.print("t \"\"")
-            self.print_outcome(t, li, lj)
+            self.print_outcome(t, li, lj, k)
             return
 
         self.print("p \"\" 1 %d \"%s\"" % (self.get_infoset(0, h0), GambitSolver.infoset_to_str(h0, True)))
@@ -107,7 +108,7 @@ class GambitSolver:
         self.print(" }")
 
         if li >= 0 and lj >= 0:
-            self.print_outcome(t, li, lj)
+            self.print_outcome(t, li, lj, k)
         else:
             self.println(" 0")
 
@@ -120,12 +121,12 @@ class GambitSolver:
             self.println(" 0")
 
             for j in range(self.n_slots):
-                self.recursive(remain_stage - 1, t, i, j, h0 + [i, j], h1 + [i, j])
+                self.recursive(remain_stage - 1, t, i, j, h0 + [i, j], h1 + [i, j], k * self.beta)
 
 
 class BeliefSecurityEnv(BaseEnv):
     def __init__(self, n_slots, n_types, prior, n_rounds, value_low=5., value_high=10., zero_sum=False, seed=None,
-                 record_def=False, export_gambit=False, random_prior=False, vn_load_path=None, atk_env=False):
+                 record_def=False, export_gambit=False, random_prior=False, vn_load_path=None, atk_env=False, beta=1.0):
         self.n_slots = n_slots
         self.n_types = n_types
         self.prior = np.array(prior) if prior is not None else np.random.rand(n_types)
@@ -139,6 +140,7 @@ class BeliefSecurityEnv(BaseEnv):
         self.value_high = value_high
         self.vn_load_path = vn_load_path
         self.atk_env = atk_env
+        self.beta = beta
 
         # self.ob_shape = (n_rounds - 1, 2, n_slots + 1) if record_def else (n_rounds - 1, n_slots + 1)
         # self.ob_len = np.prod(self.ob_shape)
@@ -215,7 +217,7 @@ class BeliefSecurityEnv(BaseEnv):
             print(LA.eigvals(np.matmul(tmp_dfd_p.T, tmp_atk_p)))
 
         if export_gambit:
-            self.gambit_solver = GambitSolver(n_slots=n_slots, n_types=n_types, n_stages=n_rounds, payoff=self.payoff, prior=self.prior)
+            self.gambit_solver = GambitSolver(n_slots=n_slots, n_types=n_types, n_stages=n_rounds, payoff=self.payoff, prior=self.prior, beta=self.beta)
             self.gambit_solver.generate()
 
         self.attacker_strategy_exploiter = self._AttackerStrategyExploiter(self)
@@ -227,6 +229,8 @@ class BeliefSecurityEnv(BaseEnv):
 
         self.atk_vn = None
         self.dfd_vn = None
+
+        self.k = 1.0
 
         if vn_load_path is not None:
             # self.atk_vn = [ValueNetwork("atk%d" % i, n_types, 64, 2) for i in range(n_types)]
@@ -406,6 +410,7 @@ class BeliefSecurityEnv(BaseEnv):
         self.type_ob[self.atk_type] = 1.
         self.belief = np.copy(self.prior)
         self.probs = [0.0, 0.0]
+        self.k = 1.0
         # print(self.policies)
         return self._get_ob(), self.probs, self.ac_history
 
@@ -425,13 +430,15 @@ class BeliefSecurityEnv(BaseEnv):
 
         # print(self.rounds_so_far, self.belief)
 
-        atk_rew = self.payoff[self.atk_type, actions[0], actions[1], 0]
-        dfd_rew = self.payoff[self.atk_type, actions[0], actions[1], 1]
+        atk_rew = self.payoff[self.atk_type, actions[0], actions[1], 0] * self.k
+        dfd_rew = self.payoff[self.atk_type, actions[0], actions[1], 1] * self.k
 
         if self.atk_vn is not None and self.dfd_vn is not None:
-            atk_rew += self.atk_vn[self.atk_type].calc(self.belief)
-            dfd_rew += self.dfd_vn.calc(self.belief)
+            atk_rew += self.atk_vn[self.atk_type].calc(self.belief) * self.beta
+            dfd_rew += self.dfd_vn.calc(self.belief) * self.beta
             self.rounds_so_far = self.n_rounds - 1
+        else:
+            self.k *= self.beta
 
         if self.rounds_so_far < self.n_rounds - 1:
             if self.record_def:
@@ -631,7 +638,7 @@ class BeliefSecurityEnv(BaseEnv):
         for_sheet += atk_eps + [def_eps] + [atk_u[t][initial_state] for t in range(self.n_types)] + [def_u[initial_state]]
         print("\t".join(list(map(str, for_sheet))))
 
-        return (atk_eps, atk_pbne_eps), (def_eps, def_pbne_eps)
+        return ((atk_eps, atk_pbne_eps), (def_eps, def_pbne_eps)), ([atk_u[t][initial_state] for t in range(self.n_types)], def_u[initial_state])
 
     def get_strategy_profile(self, strategies):
         atk_s, dfd_s = strategies
@@ -707,6 +714,7 @@ class BeliefSecurityEnv(BaseEnv):
             self.prior = env.prior
             self.payoff = env.payoff
             self.record_def = env.record_def
+            self.beta = env.beta
 
             self._get_def_payoff = env.get_def_payoff
             self._encode_history = env.encode_history
@@ -714,7 +722,7 @@ class BeliefSecurityEnv(BaseEnv):
         def _reset(self):
             self.cache = dict()
 
-        def _recursive(self, history, prior):
+        def _recursive(self, history, prior, k):
             encoded = self._encode_history(history)
             if len(history) >= self.n_rounds:
                 return 0.0
@@ -740,8 +748,8 @@ class BeliefSecurityEnv(BaseEnv):
                             next_history = history + [[atk_ac, def_ac]]
                         else:
                             next_history = history + [atk_ac]
-                        tmp = self._recursive(next_history, prob)
-                        r = self._get_def_payoff(atk_ac, def_ac, prob) + tmp
+                        tmp = self._recursive(next_history, prob, k * self.beta)
+                        r = self._get_def_payoff(atk_ac, def_ac, prob) * k + tmp
                         ret += r * p
                     # print(history, def_ac, ret)
                     if ret > max_ret:
@@ -756,7 +764,7 @@ class BeliefSecurityEnv(BaseEnv):
             # self.init_ob = self._convert_to_def_init_ob()
             # print(self.prior)
             self.prior = prior
-            self._recursive([], self.prior)
+            self._recursive([], self.prior, 1.0)
             return self.cache
 
     class _DefenderStrategyExploiter(object):
@@ -769,6 +777,7 @@ class BeliefSecurityEnv(BaseEnv):
             self.prior = env.prior
             self.payoff = env.payoff
             self.record_def = env.record_def
+            self.beta = env.beta
 
             self._get_atk_payoff = env.get_atk_payoff
             self._encode_history = env.encode_history
@@ -776,7 +785,7 @@ class BeliefSecurityEnv(BaseEnv):
         def _reset(self):
             self.cache = dict()
 
-        def _recursive(self, history, t):
+        def _recursive(self, history, t, k):
             encoded = self._encode_history(history)
             if len(history) >= self.n_rounds:
                 return 0.0
@@ -794,8 +803,8 @@ class BeliefSecurityEnv(BaseEnv):
                             next_history = history + [[atk_ac, def_ac]]
                         else:
                             next_history = history + [atk_ac]
-                        tmp = self._recursive(next_history, t)
-                        r = self._get_atk_payoff(t, atk_ac, def_ac) + tmp
+                        tmp = self._recursive(next_history, t, k * self.beta)
+                        r = self._get_atk_payoff(t, atk_ac, def_ac) * k + tmp
                         ret += r * p
                     if ret > max_ret:
                         max_ret = ret
@@ -807,7 +816,7 @@ class BeliefSecurityEnv(BaseEnv):
             ret = []
             for t in range(self.n_types):
                 self._reset()
-                self._recursive([], t)
+                self._recursive([], t, 1.0)
                 ret.append(deepcopy(self.cache))
             return ret
 
@@ -822,6 +831,7 @@ class BeliefSecurityEnv(BaseEnv):
             self.prior = env.prior
             self.payoff = env.payoff
             self.record_def = env.record_def
+            self.beta = env.beta
 
             self._get_def_payoff = env.get_def_payoff
             self._encode_history = env.encode_history
@@ -829,7 +839,7 @@ class BeliefSecurityEnv(BaseEnv):
         def _reset(self):
             self.cache = dict()
 
-        def _recursive(self, history, prior):
+        def _recursive(self, history, prior, k):
             encoded = self._encode_history(history)
             if len(history) >= self.n_rounds:
                 return 0.0
@@ -856,8 +866,8 @@ class BeliefSecurityEnv(BaseEnv):
                             next_history = history + [[atk_ac, def_ac]]
                         else:
                             next_history = history + [atk_ac]
-                        tmp = self._recursive(next_history, p_type)
-                        r = self._get_def_payoff(atk_ac, def_ac, p_type) + tmp
+                        tmp = self._recursive(next_history, p_type, k * self.beta)
+                        r = self._get_def_payoff(atk_ac, def_ac, p_type) * k + tmp
                         utility += r * p_def * p_atk
                 self.cache[encoded] = utility
                 return utility
@@ -867,7 +877,7 @@ class BeliefSecurityEnv(BaseEnv):
             self.attacker_strategy = attacker_strategy
             self.defender_strategy = defender_strategy
             self.prior = prior
-            self._recursive([], self.prior)
+            self._recursive([], self.prior, 1.0)
             return self.cache
 
     class _AttackerUtilityCalculator(object):
@@ -882,6 +892,7 @@ class BeliefSecurityEnv(BaseEnv):
             self.prior = env.prior
             self.payoff = env.payoff
             self.record_def = env.record_def
+            self.beta = env.beta
 
             self._get_atk_payoff = env.get_atk_payoff
             self._encode_history = env.encode_history
@@ -890,7 +901,7 @@ class BeliefSecurityEnv(BaseEnv):
             self.cache = dict()
             self.freq = dict()
 
-        def _recursive(self, history, t):
+        def _recursive(self, history, t, k):
             encoded = self._encode_history(history)
             if len(history) >= self.n_rounds:
                 return 0.0
@@ -908,8 +919,8 @@ class BeliefSecurityEnv(BaseEnv):
                             next_history = history + [[atk_ac, def_ac]]
                         else:
                             next_history = history + [atk_ac]
-                        tmp = self._recursive(next_history, t)
-                        r = self._get_atk_payoff(t, atk_ac, def_ac) + tmp
+                        tmp = self._recursive(next_history, t, k * self.beta)
+                        r = self._get_atk_payoff(t, atk_ac, def_ac) * k + tmp
                         utility += r * p_def * p_atk
                 self.cache[encoded] = utility
                 return utility
@@ -922,7 +933,7 @@ class BeliefSecurityEnv(BaseEnv):
             ret = []
             for t in range(self.n_types):
                 self._reset()
-                self._recursive([], t)
+                self._recursive([], t, 1.0)
                 ret.append(deepcopy(self.cache))
 
             return ret
