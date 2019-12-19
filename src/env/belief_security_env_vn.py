@@ -572,8 +572,8 @@ class BeliefSecurityEnv(BaseEnv):
         tas = self._convert_attacker_strategy(attacker_strategy, defender_strategy)
         tds = self._convert_defender_strategy(attacker_strategy, defender_strategy)
 
-        print("vpred:", [attacker_strategy.vpred(self._get_atk_ob(i, self.prior, 0)) for i in range(self.n_types)],
-              defender_strategy.vpred(self._get_dfd_ob(self.prior, 0)))
+        # print("vpred:", [attacker_strategy.vpred(self._get_atk_ob(i, self.prior, 0)) for i in range(self.n_types)],
+        #       defender_strategy.vpred(self._get_dfd_ob(self.prior, 0)))
 
 
         def display(ts, t='?'):
